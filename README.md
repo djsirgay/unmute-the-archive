@@ -1,32 +1,50 @@
 # Unmute the Archive
 
-Unmute the Archive is a provenance-aware bridge from vulnerable cultural recordings to collaborative Audiotool sessions. It asks for the context and permission that usually disappear during upload, fingerprints the original source, uploads it as an unlisted Audiotool sample, and inserts it into a chosen project through the Nexus SDK.
+Unmute the Archive is a local-first research tool for building verifiable archival passports for cultural recordings. It connects five things that normally get separated: the audio file, its provenance, its rights context, a repeatable integrity check, and its later creative reuse.
 
-## Why it exists
+The project grew from Sergéy Ulyanov's work with Belarusian-language music and Nostalgai Recordz, a U.S.-based independent label supporting artists in exile.
 
-Musical archives are often treated as piles of files. Once a recording enters a production workflow, the names, languages, places, consent, and human relationships around it are easily lost. This app keeps that story attached to the first creative handoff.
+## The practical problem
 
-The prototype grew from Sergéy Ulyanov's work with Belarusian-language music and Nostalgai Recordz, a U.S.-based independent label supporting artists in exile.
+A folder of audio files is not yet an archive. Filenames disappear, formats are transcoded, drives are lost, public links break, and the people who remember why a recording mattered become unreachable. When a recording enters a production workflow, its language, place, consent, and cultural context can disappear immediately.
 
-## What the app does
+Unmute the Archive creates a portable record before that handoff happens.
 
-1. Collects essential provenance: title, contributor/community, language, place, context, and consent basis.
-2. Keeps the source file local until the user explicitly starts the transfer.
-3. Calculates a SHA-256 fingerprint for the original file.
-4. Authenticates the user with Audiotool OAuth (`project:write`).
-5. Uploads the source as an **unlisted** sample.
-6. Opens the selected Audiotool project through Nexus and inserts the sample on its timeline.
-7. Produces a portable JSON receipt linking the original fingerprint to the Audiotool destination.
+## What works now
 
-The included synthetic demo clip is generated in the browser and contains no third-party material. It lets judges test the complete flow without providing their own recording.
+1. **Create a human-readable archival passport.** Record title, creator or contributor, language, place, date, collection, cultural context, rights basis, and a public evidence link.
+2. **Fingerprint an available source.** The browser calculates a SHA-256 digest from every byte without uploading the audio.
+3. **Document a lost source honestly.** A missing master can be saved as a metadata-only recovery lead, but it never receives a fabricated fingerprint.
+4. **Verify a file later.** Re-select an audio file and compare it with a local or imported passport. An exact match means every byte is identical.
+5. **Build a local research corpus.** Passports are stored in the browser and can be exported as JSON for preservation or CSV for analysis.
+6. **Create a research citation.** Every passport includes a human-readable citation and a portable JSON receipt.
+7. **Transfer to Audiotool optionally.** With an Audiotool developer client ID, a fingerprinted source can be uploaded as an unlisted sample and inserted into a selected session through Nexus. The transfer becomes another event in the same passport.
+
+The included four-second demo clip is generated in the browser and contains no third-party recording or performance. It is safe for testing the full local workflow.
+
+## What a fingerprint means
+
+The fingerprint is not a token, blockchain entry, copyright registration, or proof of authorship. It is a SHA-256 checksum: the same bytes produce the same 64-character digest, while a changed, edited, or transcoded file produces a different digest.
+
+That makes the passport useful for a precise question:
+
+> Is the file I have now exactly the file that was documented earlier?
+
+Authorship, dates, consent, and cultural context still require evidence and human judgment.
+
+## Pilot corpus: Belarusian Music in Exile
+
+The first-party pilot corpus starts with Sergéy Ulyanov's own Belarusian-language works from 2016–2026. This is intentionally described as a bounded founding collection, not as a comprehensive archive of Belarusian music.
+
+The pilot is methodologically useful because creator identity, rights, release context, public evidence, and cultural significance can be documented directly. Where an original source was lost with a hard drive, the record remains a recovery lead until an authentic source file is found and fingerprinted.
 
 ## Nexus integration
 
-The meaningful DAW interaction is implemented in `src/main.ts`:
+The Audiotool integration is a real write operation, not a simulated button:
 
 ```ts
 const upload = await client.samples.upload({
-  displayName: title,
+  displayName: currentManifest.title,
   file: selectedFile,
   visibility: "unlisted",
 })
@@ -38,34 +56,40 @@ await nexus.modify((transaction) => transaction.insertSample(sample))
 await nexus.stop()
 ```
 
-This is a real write operation against the selected Audiotool session, not a simulated integration.
-
 ## Run locally
 
-Requirements: Node.js 22+ and an Audiotool developer application.
-
-1. Register an app at <https://developer.audiotool.com/applications>.
-2. Use the redirect URI `http://127.0.0.1:5173/` and scope `project:write`.
-3. Copy `.env.example` to `.env` and add the public client ID.
-4. Install and run:
+Requirements: Node.js 22+.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173/>.
+Open <http://127.0.0.1:5173/>. Passport creation, fingerprinting, verification, local corpus storage, citations, and exports work without an external account.
 
-## Deploy
+To enable Audiotool transfer:
 
-The repository includes a GitHub Pages workflow. Add `VITE_AUDIOTOOL_CLIENT_ID` as a GitHub Actions repository variable and register the final Pages URL (including the trailing slash) as an Audiotool redirect URI.
+1. Register an app at <https://developer.audiotool.com/applications>.
+2. Use `http://127.0.0.1:5173/` as a development redirect URI and request `project:write`.
+3. Copy `.env.example` to `.env` and add the public client ID.
 
-## Privacy and rights
+## Verify the build
 
-- Source audio stays in the browser until the user explicitly presses the transfer button.
-- Uploaded samples are unlisted.
-- The app does not store audio or manifests on its own server.
-- Users must confirm that they hold the rights or permission needed to upload and reuse a recording.
+```bash
+npm run build
+npm test
+```
+
+The tests cover fingerprint stability, changed-file detection, explicit missing-source records, citations, and CSV export.
+
+## Privacy and limitations
+
+- Source audio stays on the user's device until an explicit Audiotool transfer.
+- Local browser storage is not a backup; export the corpus and keep trusted copies.
+- The app does not authenticate people, historical events, rights claims, or dates.
+- Metadata is only as reliable as its evidence and the person entering it.
+- A public link can support recovery work but cannot replace a fingerprinted master.
+- Audiotool transfer requires a registered developer application and has not been represented as active when no client ID is configured.
 
 ## Built by
 
