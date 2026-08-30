@@ -12,6 +12,9 @@
   "dependencies": {
     "@audiotool/nexus": "^0.0.17"
   },
+  "overrides": {
+    "undici": "^6.28.0"
+  },
   "devDependencies": {
     "typescript": "^5.9.2",
     "vite": "^7.1.3",

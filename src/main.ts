@@ -9,6 +9,7 @@ import {
   updateInCorpus,
 } from "./corpus"
 import {
+  addDerivative,
   buildManifest,
   citationFor,
   downloadManifest,
@@ -43,17 +44,18 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="nav-links">
         <a href="#create">Passport</a>
         <a href="#verify">Verify</a>
+        <a href="#derivative">Derivative</a>
         <a href="#corpus">Corpus</a>
         <a href="#pilot">Pilot</a>
       </div>
-      <span class="local-mode"><i></i>Local-first</span>
+      <a class="system-link" href="/research/system/">Unmute Belarus system ↗</a>
     </nav>
   </header>
 
   <main>
     <section class="hero shell">
       <div class="hero-copy">
-        <p class="eyebrow">Research tool for cultural audio provenance</p>
+        <p class="eyebrow">Live module · Unmute Belarus research system</p>
         <h1>Prove a recording’s story. Preserve its future.</h1>
         <p class="lede">Create a human-readable archival passport, check that a file is byte-for-byte unchanged, and build a structured research corpus. Sharing to Audiotool is optional.</p>
         <div class="hero-actions">
@@ -163,10 +165,44 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </section>
     </section>
 
+    <section class="tool-section derivative-section" id="derivative">
+      <div class="shell derivative-grid">
+        <div class="section-heading compact">
+          <p class="eyebrow">02 · Document a derivative</p>
+          <h2>Preserve the master. Register every intervention.</h2>
+          <p>This tool does not restore audio automatically. It links an edited or restored copy to an untouched fingerprinted master and records what changed, why, and who reviewed it.</p>
+          <ul class="derivative-rules">
+            <li><strong>Master stays untouched.</strong><span>The derivative receives its own fingerprint.</span></li>
+            <li><strong>Methods stay visible.</strong><span>Noise removal, EQ, repair, separation, or AI processing must be named.</span></li>
+            <li><strong>Listening judgment stays human.</strong><span>A cleaner waveform is not automatically a more authentic record.</span></li>
+          </ul>
+        </div>
+        <form class="derivative-form panel" id="derivative-form">
+          <label>Source master passport<select id="derivative-passport" required><option value="">No fingerprinted passports yet</option></select></label>
+          <label class="dropzone" for="derivative-file">
+            <input id="derivative-file" type="file" accept="audio/*" />
+            <span class="drop-icon" aria-hidden="true">↗</span>
+            <strong id="derivative-file-label">Choose the derived audio file</strong>
+            <small>The original master is never replaced.</small>
+          </label>
+          <div class="field-grid">
+            <label>Derivative label<input id="derivative-label" required placeholder="Restoration test A" /></label>
+            <label>Purpose<input id="derivative-purpose" required placeholder="Listening access / research comparison" /></label>
+          </div>
+          <label>Method and tools<textarea id="derivative-method" required rows="3" placeholder="Software, model, version, and settings if known."></textarea></label>
+          <label>Intervention log<textarea id="derivative-changes" required rows="3" placeholder="What was removed, repaired, separated, equalized, or otherwise changed?"></textarea></label>
+          <label>Human review note <span class="optional">optional</span><textarea id="derivative-review" rows="2" placeholder="What was preserved, and what artifacts or uncertainty remain?"></textarea></label>
+          <label class="check-row"><input id="derivative-master-check" type="checkbox" required /><span>I confirm that this file is a derivative and does not replace the preserved master.</span></label>
+          <button class="button primary full" id="derivative-button" type="submit">Register documented derivative</button>
+          <p class="form-message" id="derivative-message" role="status"></p>
+        </form>
+      </div>
+    </section>
+
     <section class="tool-section inverse" id="verify">
       <div class="shell verify-grid">
         <div class="section-heading compact">
-          <p class="eyebrow">02 · Verify a recording</p>
+          <p class="eyebrow">03 · Verify a recording</p>
           <h2>Is this exactly the file in the passport?</h2>
           <p>A fingerprint is not a token and does not establish authorship. It is a repeatable identity check: every byte must match the earlier receipt.</p>
         </div>
@@ -191,7 +227,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <section class="tool-section shell" id="corpus">
       <div class="section-heading row-heading">
         <div>
-          <p class="eyebrow">03 · Your local corpus</p>
+          <p class="eyebrow">04 · Your local corpus</p>
           <h2>Structured evidence, not a folder of mystery files.</h2>
         </div>
         <div class="export-actions">
@@ -226,7 +262,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div><p class="eyebrow">Honest limitations</p><h2>What this tool proves—and what it does not.</h2></div>
       <ul>
         <li><strong>It proves file identity.</strong><span>A matching fingerprint shows that two files contain the same bytes.</span></li>
+        <li><strong>It documents derivatives.</strong><span>A registered restoration stays linked to the untouched master with a separate fingerprint and intervention log.</span></li>
         <li><strong>It does not prove authorship.</strong><span>Rights, dates, people, and context still require evidence and human judgment.</span></li>
+        <li><strong>It does not yet identify the same recording across formats.</strong><span>Perceptual fingerprinting and work/recording/release relationships belong to the planned Music Atlas layer.</span></li>
         <li><strong>Local storage is not a backup.</strong><span>Export the corpus and keep copies in more than one trusted place.</span></li>
         <li><strong>Missing sources stay marked missing.</strong><span>A public link can guide recovery, but it cannot replace a fingerprinted master.</span></li>
       </ul>
@@ -234,8 +272,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   </main>
 
   <footer class="footer shell">
-    <p>Designed and built by Sergéy Ulyanov · Nostalgai Recordz</p>
-    <p>Research prototype · local-first · no blockchain claims</p>
+    <p>Designed and built by Sergéy Ulyanov · <a href="/research/system/">Unmute Belarus research system</a></p>
+    <p>Live research prototype · local-first · no blockchain claims</p>
   </footer>
 `
 
@@ -261,10 +299,17 @@ const verifyFileLabel = document.querySelector<HTMLElement>("#verify-file-label"
 const verifyTargetNote = document.querySelector<HTMLElement>("#verify-target")!
 const verifyButton = document.querySelector<HTMLButtonElement>("#verify-button")!
 const verifyResult = document.querySelector<HTMLElement>("#verify-result")!
+const derivativeForm = document.querySelector<HTMLFormElement>("#derivative-form")!
+const derivativePassport = document.querySelector<HTMLSelectElement>("#derivative-passport")!
+const derivativeFileInput = document.querySelector<HTMLInputElement>("#derivative-file")!
+const derivativeFileLabel = document.querySelector<HTMLElement>("#derivative-file-label")!
+const derivativeButton = document.querySelector<HTMLButtonElement>("#derivative-button")!
+const derivativeMessage = document.querySelector<HTMLElement>("#derivative-message")!
 
 let selectedFile: File | null = null
 let verificationFile: File | null = null
 let verificationTarget: ArchiveManifest | null = null
+let derivativeFile: File | null = null
 let currentManifest: ArchiveManifest | null = null
 let corpus = readCorpus()
 let client: AuthenticatedClient | null = null
@@ -280,6 +325,9 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
     ? `${escapeHtml(manifest.source.filename)} · ${formatBytes(manifest.source.bytes)}`
     : "Original source missing · recovery record only"
   const statusLabel = manifest.status === "fingerprinted" ? "Fingerprint created" : "Recovery lead"
+  const derivativeRows = (manifest.derivatives ?? []).map((derivative) => `
+    <li><strong>${escapeHtml(derivative.label)}</strong><span>${escapeHtml(derivative.purpose)} · ${escapeHtml(derivative.source.filename)}</span></li>
+  `).join("")
 
   liveReceipt.innerHTML = `
     <div class="receipt-head"><span>Archival Passport</span><strong>${statusLabel}</strong></div>
@@ -293,6 +341,7 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
       <div class="full-row"><dt>Integrity fingerprint</dt><dd class="mono">${escapeHtml(shortFingerprint(manifest))}</dd></div>
     </dl>
     <div class="citation-box"><span>Research citation</span><p>${escapeHtml(citationFor(manifest))}</p></div>
+    ${derivativeRows ? `<div class="derivative-receipts"><span>Documented derivatives</span><ul>${derivativeRows}</ul></div>` : ""}
     <div class="receipt-actions">
       <button class="button quiet" id="download-passport" type="button">Download JSON</button>
       <button class="button quiet" id="copy-citation" type="button">Copy citation</button>
@@ -344,6 +393,9 @@ const renderCorpus = (): void => {
   const fingerprinted = corpus.filter((item) => item.source)
   verifyPassport.innerHTML = fingerprinted.length
     ? `<option value="">Choose a local passport</option>${fingerprinted.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} — ${escapeHtml(shortFingerprint(item))}</option>`).join("")}`
+    : '<option value="">No fingerprinted passports yet</option>'
+  derivativePassport.innerHTML = fingerprinted.length
+    ? `<option value="">Choose a fingerprinted source master</option>${fingerprinted.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} — ${escapeHtml(shortFingerprint(item))}</option>`).join("")}`
     : '<option value="">No fingerprinted passports yet</option>'
 }
 
@@ -438,6 +490,57 @@ form.addEventListener("submit", async (event) => {
   }
 })
 
+derivativeFileInput.addEventListener("change", () => {
+  derivativeFile = derivativeFileInput.files?.[0] ?? null
+  derivativeFileLabel.textContent = derivativeFile ? `${derivativeFile.name} · ${formatBytes(derivativeFile.size)}` : "Choose the derived audio file"
+})
+
+derivativeForm.addEventListener("submit", async (event) => {
+  event.preventDefault()
+  if (!derivativeForm.reportValidity()) return
+  const master = corpus.find((item) => item.archiveId === derivativePassport.value)
+  if (!master?.source) {
+    derivativeMessage.textContent = "Choose a fingerprinted source master."
+    derivativePassport.focus()
+    return
+  }
+  if (!derivativeFile) {
+    derivativeMessage.textContent = "Choose the derived audio file."
+    derivativeFileInput.focus()
+    return
+  }
+
+  derivativeButton.disabled = true
+  derivativeButton.textContent = "Fingerprinting derivative…"
+  derivativeMessage.textContent = "Linking the derivative to its preserved master locally…"
+  try {
+    const updated = addDerivative(master, {
+      label: getInput("#derivative-label").value.trim(),
+      purpose: getInput("#derivative-purpose").value.trim(),
+      method: getTextArea("#derivative-method").value.trim(),
+      changeLog: getTextArea("#derivative-changes").value.trim(),
+      reviewerNote: getTextArea("#derivative-review").value.trim() || undefined,
+      source: {
+        filename: derivativeFile.name,
+        mediaType: derivativeFile.type || "application/octet-stream",
+        bytes: derivativeFile.size,
+        sha256: await sha256(derivativeFile),
+      },
+    })
+    corpus = updateInCorpus(updated)
+    currentManifest = updated
+    renderReceipt(updated)
+    renderCorpus()
+    derivativeMessage.textContent = "Derivative registered. Export the updated passport JSON to preserve the intervention record."
+    derivativeButton.textContent = "Derivative registered"
+  } catch (error) {
+    derivativeMessage.textContent = error instanceof Error ? error.message : "The derivative could not be registered."
+    derivativeButton.textContent = "Register documented derivative"
+  } finally {
+    derivativeButton.disabled = false
+  }
+})
+
 verifyPassport.addEventListener("change", () => {
   verificationTarget = corpus.find((item) => item.archiveId === verifyPassport.value) ?? null
   verifyTargetNote.textContent = verificationTarget
@@ -452,7 +555,7 @@ receiptFile.addEventListener("change", async () => {
   if (!file) return
   try {
     const parsed = JSON.parse(await file.text()) as ArchiveManifest
-    if (parsed.schema !== "unmute-archive/2.0" || !parsed.source?.sha256) throw new Error("This receipt has no compatible fingerprint.")
+    if (!["unmute-archive/2.0", "unmute-archive/2.1"].includes(parsed.schema) || !parsed.source?.sha256) throw new Error("This receipt has no compatible fingerprint.")
     verificationTarget = parsed
     verifyPassport.value = ""
     verifyTargetNote.textContent = `Imported “${parsed.title}” · ${shortFingerprint(parsed)}`

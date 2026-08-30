@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { corpusAsCsv } from "./corpus"
-import { buildManifest, citationFor, sha256 } from "./manifest"
+import { addDerivative, buildManifest, citationFor, sha256 } from "./manifest"
 
 describe("archival passports", () => {
   it("creates a fingerprinted passport with a traceable event", () => {
@@ -22,7 +22,7 @@ describe("archival passports", () => {
       },
     })
 
-    expect(manifest.schema).toBe("unmute-archive/2.0")
+    expect(manifest.schema).toBe("unmute-archive/2.1")
     expect(manifest.events.map((event) => event.type)).toEqual(["documented", "fingerprinted"])
     expect(citationFor(manifest)).toContain("Fingerprint-verified local source")
   })
@@ -71,5 +71,30 @@ describe("archival passports", () => {
     expect(csv).toContain('"archive_id"')
     expect(csv).toContain('"A title, with punctuation"')
     expect(csv).toContain('"source-missing"')
+  })
+
+  it("links a documented derivative without replacing the source master", () => {
+    const manifest = buildManifest({
+      status: "fingerprinted",
+      collection: "Pilot corpus",
+      title: "Archive master",
+      creator: "Creator",
+      language: "Belarusian",
+      place: "Minsk",
+      context: "Context",
+      rightsBasis: "Creator-owned.",
+      source: { filename: "master.wav", mediaType: "audio/wav", bytes: 10, sha256: "a".repeat(64) },
+    })
+    const updated = addDerivative(manifest, {
+      label: "Restoration test A",
+      purpose: "Listening access",
+      method: "Documented noise reduction",
+      changeLog: "Reduced steady noise; no generative replacement.",
+      source: { filename: "restored.wav", mediaType: "audio/wav", bytes: 12, sha256: "b".repeat(64) },
+    })
+
+    expect(updated.source?.sha256).toBe("a".repeat(64))
+    expect(updated.derivatives?.[0].source.sha256).toBe("b".repeat(64))
+    expect(updated.events.at(-1)?.type).toBe("derived")
   })
 })

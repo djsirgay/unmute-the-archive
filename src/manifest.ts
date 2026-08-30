@@ -1,11 +1,27 @@
 export type ArchiveEvent = {
-  type: "documented" | "fingerprinted" | "verified" | "transferred"
+  type: "documented" | "fingerprinted" | "verified" | "transferred" | "derived"
   at: string
   note: string
 }
 
+export type ArchiveDerivative = {
+  derivativeId: string
+  createdAt: string
+  label: string
+  purpose: string
+  method: string
+  changeLog: string
+  reviewerNote?: string
+  source: {
+    filename: string
+    mediaType: string
+    bytes: number
+    sha256: string
+  }
+}
+
 export type ArchiveManifest = {
-  schema: "unmute-archive/2.0"
+  schema: "unmute-archive/2.0" | "unmute-archive/2.1"
   archiveId: string
   createdAt: string
   updatedAt: string
@@ -19,6 +35,7 @@ export type ArchiveManifest = {
   context: string
   rightsBasis: string
   evidenceUrl?: string
+  derivatives?: ArchiveDerivative[]
   source?: {
     filename: string
     mediaType: string
@@ -59,12 +76,40 @@ export const buildManifest = (values: ManifestValues): ArchiveManifest => {
   }
 
   return {
-    schema: "unmute-archive/2.0",
+    schema: "unmute-archive/2.1",
     archiveId: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,
     events,
     ...values,
+  }
+}
+
+export const addDerivative = (
+  manifest: ArchiveManifest,
+  values: Omit<ArchiveDerivative, "derivativeId" | "createdAt">,
+): ArchiveManifest => {
+  if (!manifest.source) throw new Error("A derivative must be linked to a fingerprinted source master.")
+  const timestamp = new Date().toISOString()
+  const derivative: ArchiveDerivative = {
+    derivativeId: crypto.randomUUID(),
+    createdAt: timestamp,
+    ...values,
+  }
+
+  return {
+    ...manifest,
+    schema: "unmute-archive/2.1",
+    updatedAt: timestamp,
+    derivatives: [...(manifest.derivatives ?? []), derivative],
+    events: [
+      ...manifest.events,
+      {
+        type: "derived",
+        at: timestamp,
+        note: `Registered derivative ${derivative.label}; SHA-256 ${derivative.source.sha256}`,
+      },
+    ],
   }
 }
 
