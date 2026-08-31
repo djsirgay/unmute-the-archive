@@ -1,4 +1,4 @@
-import { citationFor, type ArchiveManifest } from "./manifest"
+import { citationFor, isArchiveManifest, type ArchiveManifest } from "./manifest"
 
 const STORAGE_KEY = "unmute-the-archive/corpus/v2"
 
@@ -6,9 +6,7 @@ export const readCorpus = (): ArchiveManifest[] => {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is ArchiveManifest =>
-      typeof item === "object" && item !== null && "archiveId" in item && "schema" in item,
-    )
+    return parsed.filter(isArchiveManifest)
   } catch {
     return []
   }

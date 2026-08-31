@@ -18,7 +18,7 @@ Unmute the Archive creates a portable record before that handoff happens.
 4. **Verify a file later.** Re-select an audio file and compare it with a local or imported passport. An exact match means every byte is identical.
 5. **Build a local research corpus.** Passports are stored in the browser and can be exported as JSON for preservation or CSV for analysis.
 6. **Create a research citation.** Every passport includes a human-readable citation and a portable JSON receipt.
-7. **Search a source-visible Music Atlas.** The live pilot combines five creator-documented records with 13 independently cited Belarusian remix leads, structured filters, evidence dossiers, local corrections, and JSON/CSV export.
+7. **Search a source-visible Music Atlas.** The live pilot combines five creator-documented records with 13 independently cited Belarusian remix leads, natural-language queries in English, Belarusian, and Russian, structured filters, evidence dossiers, local corrections, a six-page seed-source register, and JSON/CSV export.
 8. **Document reversible access copies.** Restoration Lab creates a separate listening derivative, preserves the fingerprinted master, and records every intervention and human review note.
 9. **Transfer to Audiotool optionally.** With an Audiotool developer client ID, a fingerprinted source can be uploaded as an unlisted sample and inserted into a selected session through Nexus. The transfer becomes another event in the same passport.
 
@@ -36,7 +36,7 @@ Authorship, dates, consent, and cultural context still require evidence and huma
 
 ## Pilot corpus: Belarusian Music in Exile
 
-The corpus has two transparent seed layers. The first begins with Sergéy Ulyanov's own Belarusian-language works from 2016–2026. The second is a source-cited public remix index with 13 records documented by Budzma, 34mag, MusicBrainz, and CityDog. This is intentionally a bounded research pilot, not a claim that Tuzin.fm or the wider Belarusian archive has already been ingested.
+The corpus has two transparent seed layers. The first begins with Sergéy Ulyanov's own Belarusian-language works from 2016–2026. The second is a source-cited public remix index with 13 records documented across six pages from Budzma, 34mag, MusicBrainz, and CityDog. This is intentionally a bounded research pilot, not a claim that Tuzin.fm or the wider Belarusian archive has already been ingested.
 
 The first layer is methodologically useful because creator identity, rights, release context, public evidence, and cultural significance can be documented directly. The public-source layer tests discovery, classification, and evidence visibility beyond the researcher's own catalog. Where an original source was lost with a hard drive, the record remains a recovery lead until an authentic source file is found and fingerprinted.
 
@@ -82,7 +82,7 @@ npm run build
 npm test
 ```
 
-The tests cover fingerprint stability, changed-file detection, explicit missing-source records, citations, CSV export, source-visible Music Atlas queries, and exclusion of incorrectly tagged dance results.
+The tests cover fingerprint stability, changed-file detection, explicit missing-source records, runtime validation of imported passports, citations, CSV export, multilingual Music Atlas queries, language-intent accuracy, ranking, and consistency between dance labels and filters.
 
 ## Privacy and limitations
 
@@ -91,6 +91,8 @@ The tests cover fingerprint stability, changed-file detection, explicit missing-
 - The app does not authenticate people, historical events, rights claims, or dates.
 - Metadata is only as reliable as its evidence and the person entering it.
 - A public link can support recovery work but cannot replace a fingerprinted master.
+- Portable JSON is validated before it enters the local corpus; incomplete or internally inconsistent records are rejected.
+- The browser pilot limits each audio file to 200 MB to avoid freezing the page or losing unsaved work. This is an interface boundary, not an archival recommendation.
 - Audiotool transfer requires a registered developer application and has not been represented as active when no client ID is configured.
 
 ## Built by

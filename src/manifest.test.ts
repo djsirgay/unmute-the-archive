@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { corpusAsCsv } from "./corpus"
-import { addDerivative, buildManifest, citationFor, sha256 } from "./manifest"
+import { addDerivative, buildManifest, citationFor, isArchiveManifest, sha256 } from "./manifest"
 
 describe("archival passports", () => {
   it("creates a fingerprinted passport with a traceable event", () => {
@@ -124,5 +124,24 @@ describe("archival passports", () => {
     expect(() => addDerivative(manifest, { ...derivative, source: manifest.source! })).toThrow("byte-for-byte identical")
     const updated = addDerivative(manifest, derivative)
     expect(() => addDerivative(updated, derivative)).toThrow("already registered")
+  })
+
+  it("rejects incomplete or internally inconsistent portable JSON", () => {
+    const valid = buildManifest({
+      status: "fingerprinted",
+      collection: "Pilot corpus",
+      title: "Archive master",
+      creator: "Creator",
+      language: "Belarusian",
+      place: "Minsk",
+      context: "Context",
+      rightsBasis: "Creator-owned.",
+      source: { filename: "master.wav", mediaType: "audio/wav", bytes: 10, sha256: "a".repeat(64) },
+    })
+
+    expect(isArchiveManifest(valid)).toBe(true)
+    expect(isArchiveManifest({ schema: "unmute-archive/2.1", archiveId: "unsafe" })).toBe(false)
+    expect(isArchiveManifest({ ...valid, source: undefined })).toBe(false)
+    expect(isArchiveManifest({ ...valid, source: { ...valid.source, sha256: "not-a-digest" } })).toBe(false)
   })
 })

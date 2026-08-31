@@ -50,6 +50,56 @@ export type ArchiveManifest = {
   }
 }
 
+export const MAX_BROWSER_AUDIO_BYTES = 200 * 1_024 * 1_024
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const hasString = (value: Record<string, unknown>, key: string): boolean =>
+  typeof value[key] === "string" && Boolean(String(value[key]).trim())
+
+const isSha256 = (value: unknown): value is string =>
+  typeof value === "string" && /^[a-f0-9]{64}$/i.test(value)
+
+const isArchiveSource = (value: unknown): value is NonNullable<ArchiveManifest["source"]> => {
+  if (!isPlainRecord(value)) return false
+  return hasString(value, "filename") && hasString(value, "mediaType") &&
+    typeof value.bytes === "number" && Number.isFinite(value.bytes) && value.bytes >= 0 &&
+    isSha256(value.sha256)
+}
+
+const isArchiveEvent = (value: unknown): value is ArchiveEvent => {
+  if (!isPlainRecord(value)) return false
+  return ["documented", "fingerprinted", "verified", "transferred", "derived"].includes(String(value.type)) &&
+    hasString(value, "at") && hasString(value, "note")
+}
+
+const isArchiveDerivative = (value: unknown): value is ArchiveDerivative => {
+  if (!isPlainRecord(value)) return false
+  return hasString(value, "derivativeId") && hasString(value, "createdAt") &&
+    hasString(value, "label") && hasString(value, "purpose") && hasString(value, "method") &&
+    hasString(value, "changeLog") && isArchiveSource(value.source) &&
+    (value.reviewerNote === undefined || typeof value.reviewerNote === "string")
+}
+
+/**
+ * Runtime validation for portable JSON and localStorage. TypeScript types disappear
+ * in the browser, so imported records must be checked before UI code trusts them.
+ */
+export const isArchiveManifest = (value: unknown): value is ArchiveManifest => {
+  if (!isPlainRecord(value)) return false
+  if (!["unmute-archive/2.0", "unmute-archive/2.1"].includes(String(value.schema))) return false
+  if (!["fingerprinted", "source-missing"].includes(String(value.status))) return false
+  const required = ["archiveId", "createdAt", "updatedAt", "collection", "title", "creator", "language", "place", "context", "rightsBasis"]
+  if (!required.every((key) => hasString(value, key))) return false
+  if (value.recordedOn !== undefined && typeof value.recordedOn !== "string") return false
+  if (value.evidenceUrl !== undefined && typeof value.evidenceUrl !== "string") return false
+  if (!Array.isArray(value.events) || !value.events.every(isArchiveEvent)) return false
+  if (value.derivatives !== undefined && (!Array.isArray(value.derivatives) || !value.derivatives.every(isArchiveDerivative))) return false
+  if (value.status === "fingerprinted") return isArchiveSource(value.source)
+  return value.source === undefined
+}
+
 type ManifestValues = Omit<
   ArchiveManifest,
   "schema" | "archiveId" | "createdAt" | "updatedAt" | "events"

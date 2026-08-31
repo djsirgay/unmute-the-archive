@@ -1,5 +1,5 @@
 import { readCorpus, saveToCorpus } from "./corpus"
-import type { ArchiveManifest } from "./manifest"
+import { isArchiveManifest, type ArchiveManifest } from "./manifest"
 
 export type Confidence = "high" | "medium" | "recovery"
 export type RecordKind = "song" | "album" | "dj-set" | "mix" | "recording" | "derivative"
@@ -168,7 +168,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix from Šuma’s zolak remix EP",
-    genres: ["ethno-electronic", "remix", "dance"],
+    genres: ["ethno-electronic", "remix"],
     themes: ["traditional song", "Belarusian language", "club circulation"],
     dance: false,
     confidence: "high",
@@ -190,7 +190,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix from Šuma’s zolak remix EP",
-    genres: ["ethno-electronic", "remix", "dance"],
+    genres: ["ethno-electronic", "remix"],
     themes: ["traditional song", "Belarusian language", "club circulation"],
     dance: false,
     confidence: "high",
@@ -212,7 +212,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix from Šuma’s zolak remix EP",
-    genres: ["ethno-electronic", "remix", "dance"],
+    genres: ["ethno-electronic", "remix"],
     themes: ["traditional song", "Belarusian language", "club circulation"],
     dance: false,
     confidence: "high",
@@ -256,7 +256,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix of Akute’s song Kuli",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian-language rock", "electronic reinterpretation"],
     dance: false,
     confidence: "high",
@@ -278,7 +278,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix from Akute’s Iholki EP",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian-language rock", "electronic reinterpretation"],
     dance: false,
     confidence: "high",
@@ -300,7 +300,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "remix from Akute’s Iholki EP",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian-language rock", "electronic reinterpretation"],
     dance: false,
     confidence: "high",
@@ -344,7 +344,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "rhythmic remix of Ana Zhdanova’s Belarusian-language single Znička",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian language", "contemporary pop", "club circulation"],
     dance: false,
     confidence: "high",
@@ -366,7 +366,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "rhythmic remix of Ana Zhdanova’s Belarusian-language single Znička",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian language", "contemporary pop", "club circulation"],
     dance: false,
     confidence: "high",
@@ -388,7 +388,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital remix",
     relationship: "rhythmic remix of Ana Zhdanova’s Belarusian-language single Znička",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian language", "contemporary pop", "club circulation"],
     dance: false,
     confidence: "high",
@@ -410,7 +410,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     kind: "derivative",
     format: "Digital single / remix",
     relationship: "official remix of Palina’s Я пойму",
-    genres: ["electronic", "remix", "dance"],
+    genres: ["electronic", "remix"],
     themes: ["Belarusian language", "digital circulation"],
     dance: false,
     confidence: "high",
@@ -522,9 +522,8 @@ export const importPassportJson = (raw: string): number => {
   const values = Array.isArray(parsed) ? parsed : [parsed]
   let imported = 0
   for (const value of values) {
-    if (!value || typeof value !== "object") continue
-    if (!("archiveId" in value) || !("schema" in value) || !("title" in value)) continue
-    saveToCorpus(value as ArchiveManifest)
+    if (!isArchiveManifest(value)) continue
+    saveToCorpus(value)
     imported += 1
   }
   return imported
@@ -545,15 +544,66 @@ export const recordSearchText = (record: AtlasRecord): string => [
   record.collection, record.rightsStatus, record.dance ? "dance dancing club" : "",
 ].join(" ").toLowerCase()
 
-const queryTokens = (value: string): string[] => value.toLowerCase().split(/[^\p{L}\p{N}]+/u)
-  .filter((token) => token.length > 1 && !["the", "and", "all", "find", "of", "in", "на", "и"].includes(token))
-  .map((token) => ({ belarusian: "belarusian", беларус: "belarus", remix: "mix", remixes: "mix", танцев: "dance" }[token] ?? token))
+const normalizeBasicToken = (value: string): string => value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
+
+const QUERY_STOP_WORDS = new Set([
+  "the", "and", "all", "find", "show", "give", "me", "of", "in", "on", "or", "for", "with",
+  "найди", "найти", "покажи", "все", "мне", "и", "или", "на", "по", "с", "для",
+  "знайдзі", "знайсці", "пакажы", "усе", "ўсе", "мне", "і", "ці", "або", "на", "па", "з", "для",
+].map(normalizeBasicToken))
+
+const normalizeQueryToken = (raw: string): string => {
+  const token = normalizeBasicToken(raw)
+  if (/^(belarus|беларус|белорус)/u.test(token)) return "belarus"
+  if (/^(dance|dancing|танц|танцав|танцев)/u.test(token)) return "dance"
+  if (/^(remix|remixes|mixes|рэмiкс|рэмікс|ремикс)/u.test(token)) return "mix"
+  if (/^(songs?|песн|песень)/u.test(token)) return "song"
+  if (/^(tracks?|трек|трэк)/u.test(token)) return "track"
+  if (/^(works?|работ|твор|прац)/u.test(token)) return "work"
+  if (/^(music|музык|музыч)/u.test(token)) return "music"
+  return token
+}
+
+export const queryTokens = (value: string): string[] => value.split(/[^\p{L}\p{N}]+/u)
+  .map(normalizeQueryToken)
+  .filter((token) => token.length > 1 && !QUERY_STOP_WORDS.has(token))
+
+export const isDanceRemixQuery = (query: string): boolean => {
+  const tokens = queryTokens(query)
+  return tokens.includes("dance") && tokens.includes("mix")
+}
 
 export const matchesResearchQuery = (record: AtlasRecord, query: string): boolean => {
   const haystack = recordSearchText(record)
   const tokens = queryTokens(query)
   const asksDanceOrRemix = tokens.includes("dance") && tokens.includes("mix")
-  const required = asksDanceOrRemix ? tokens.filter((token) => token !== "dance" && token !== "mix") : tokens
-  const categoryMatch = !asksDanceOrRemix || record.dance || ["mix", "dj-set", "derivative"].includes(record.kind) || record.relationship.includes("remix")
-  return categoryMatch && required.every((token) => haystack.includes(token) || (token === "mix" && ["mix", "dj-set", "derivative"].includes(record.kind)))
+  const asksBelarusianLanguage = tokens.includes("belarus")
+  const genericMediaTerms = new Set(["song", "track", "work", "music", "content", "контент", "музык", "музыка"])
+  const required = asksDanceOrRemix
+    ? tokens.filter((token) => token !== "dance" && token !== "mix" && token !== "belarus" && !genericMediaTerms.has(token))
+    : tokens.filter((token) => token !== "belarus")
+  const categoryMatch = !asksDanceOrRemix || record.dance || ["mix", "dj-set"].includes(record.kind) || record.relationship.toLowerCase().includes("remix") || record.genres.includes("remix")
+  const languageMatch = !asksBelarusianLanguage || record.language.toLowerCase().includes("belarus")
+  return categoryMatch && languageMatch && required.every((token) =>
+    haystack.includes(token) ||
+    (token === "mix" && ["mix", "dj-set", "derivative"].includes(record.kind)) ||
+    (token === "song" && record.kind === "song") ||
+    (token === "track" && ["song", "recording", "derivative"].includes(record.kind)) ||
+    (token === "work" && ["song", "album", "recording", "derivative"].includes(record.kind)),
+  )
+}
+
+export const researchRelevance = (record: AtlasRecord, query: string): number => {
+  if (!query.trim()) return 0
+  const haystack = recordSearchText(record)
+  const title = record.title.toLowerCase()
+  const tokens = queryTokens(query)
+  let score = tokens.reduce((total, token) => total + (title.includes(token) ? 4 : haystack.includes(token) ? 1 : 0), 0)
+  if (isDanceRemixQuery(query)) {
+    if (record.relationship.toLowerCase().includes("remix")) score += 8
+    if (record.kind === "derivative" && (record.relationship.toLowerCase().includes("remix") || record.genres.includes("remix"))) score += 5
+    if (record.dance) score += 3
+    if (record.confidence === "high") score += 2
+  }
+  return score
 }

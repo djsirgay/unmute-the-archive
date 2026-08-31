@@ -2,7 +2,7 @@ import "./suite.css"
 import { analyzeAudio, audioBufferToWav, decodeFile, drawWaveform, processAudio, type AudioMetrics, type ProcessSettings } from "./audio-utils"
 import { readCorpus, saveToCorpus, updateInCorpus } from "./corpus"
 import { makeDemoClip } from "./demo-audio"
-import { addDerivative, buildManifest, formatBytes, sha256, type ArchiveManifest } from "./manifest"
+import { addDerivative, buildManifest, formatBytes, MAX_BROWSER_AUDIO_BYTES, sha256, type ArchiveManifest } from "./manifest"
 import { downloadText } from "./suite-data"
 import { escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 
@@ -21,7 +21,7 @@ app.innerHTML = `${suiteHeader("restoration")}
     <aside class="lab-controls suite-panel">
       <div><span class="suite-kicker">Source + passport</span><h2>1. Link the master</h2></div>
       <label class="atlas-field">Fingerprint-verified passport<select id="passport"><option value="">Choose a local passport</option></select></label>
-      <label class="drop-file" id="drop-file"><input id="audio-file" type="file" accept="audio/*"><strong>Select the exact source audio</strong><span>WAV, MP3, M4A, OGG supported when the browser can decode it</span></label>
+      <label class="drop-file" id="drop-file"><input id="audio-file" type="file" accept="audio/*"><strong>Select the exact source audio</strong><span>WAV, MP3, M4A, OGG supported when the browser can decode it · limit ${formatBytes(MAX_BROWSER_AUDIO_BYTES)}</span></label>
       <div class="source-check" id="source-check"><span>Waiting for a file and passport.</span></div>
       <hr>
       <div><span class="suite-kicker">Transparent processing</span><h2>2. Set the intervention</h2></div>
@@ -32,7 +32,7 @@ app.innerHTML = `${suiteHeader("restoration")}
       <label class="atlas-check"><input id="normalize" type="checkbox" checked><span>Peak-normalize derivative to 95%</span></label>
       <label class="atlas-field">Intervention purpose<input id="purpose" value="Access copy for research listening"></label>
       <label class="atlas-field">Reviewer note<textarea id="reviewer-note" rows="3" placeholder="What should a future listener know?"></textarea></label>
-      <button class="suite-button primary process-button" id="process" disabled>Process documented derivative</button>
+      <button class="suite-button primary process-button" id="process" disabled>Process documented derivative</button><output class="process-status" id="process-status" aria-live="polite"></output>
     </aside>
 
     <div class="lab-output">
@@ -101,6 +101,13 @@ const assessLink = (): void => {
 
 const loadFile = async (file: File): Promise<void> => {
   resetResult()
+  if (file.size > MAX_BROWSER_AUDIO_BYTES) {
+    sourceFile = undefined; sourceBuffer = undefined; sourceHash = ""
+    byId("source-title").textContent = "File not loaded"
+    byId("source-check").innerHTML = `<strong>File exceeds the browser-pilot limit.</strong><span>${escapeHtml(file.name)} is ${formatBytes(file.size)}. Use a local access copy under ${formatBytes(MAX_BROWSER_AUDIO_BYTES)}; the original remains untouched.</span>`
+    processButton.disabled = true
+    return
+  }
   sourceFile = file
   byId("source-title").textContent = file.name
   byId("source-check").innerHTML = `<span>Decoding and fingerprinting locally…</span>`
@@ -141,6 +148,7 @@ const runDemo = async (): Promise<void> => {
 const process = async (): Promise<void> => {
   if (!sourceBuffer || !sourceFile) return
   processButton.disabled = true; processButton.textContent = "Processing locally…"
+  byId<HTMLOutputElement>("process-status").textContent = "Creating a separate access copy. The source file remains untouched."
   try {
     const applied = settings()
     resultBuffer = await processAudio(sourceBuffer, applied)
@@ -165,7 +173,11 @@ const process = async (): Promise<void> => {
     }
     byId("intervention-log").innerHTML = `<dl><div><dt>Parent source</dt><dd>${shortHash(sourceHash)}</dd></div><div><dt>Derivative</dt><dd>${shortHash(resultHash)}</dd></div><div><dt>Method</dt><dd>${escapeHtml(settingsText(applied))}</dd></div><div><dt>Size</dt><dd>${formatBytes(resultBlob.size)}</dd></div></dl><p>The source remains untouched. The derivative can be downloaded now and registered only when the selected passport is an exact fingerprint match.</p>`
     wavButton.disabled = false; logButton.disabled = false; assessLink()
+    byId<HTMLOutputElement>("process-status").textContent = "Derivative created locally. Review the log before downloading or registering it."
     byId("report-panel").scrollIntoView({ behavior: "smooth", block: "center" })
+  } catch {
+    resetResult()
+    byId<HTMLOutputElement>("process-status").textContent = "Processing could not finish. Nothing was registered or uploaded; try a smaller WAV/MP3 file or reset the processing settings."
   } finally { processButton.disabled = false; processButton.textContent = "Process documented derivative" }
 }
 

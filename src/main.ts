@@ -15,6 +15,8 @@ import {
   citationFor,
   downloadManifest,
   formatBytes,
+  isArchiveManifest,
+  MAX_BROWSER_AUDIO_BYTES,
   sha256,
   shortFingerprint,
   type ArchiveManifest,
@@ -218,7 +220,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
               <input id="audio-file" type="file" accept="audio/*" />
               <span class="drop-icon" aria-hidden="true">↗</span>
               <strong id="file-label">Choose an audio file</strong>
-              <small id="file-meta">WAV, MP3, M4A, FLAC, or another audio format</small>
+              <small id="file-meta">WAV, MP3, M4A, FLAC, or another audio format · browser pilot limit ${formatBytes(MAX_BROWSER_AUDIO_BYTES)}</small>
             </label>
             <audio id="audio-preview" controls hidden></audio>
             <label class="check-row"><input id="rights-check" type="checkbox" /><span>I control this file or have explicit permission to preserve it.</span></label>
@@ -430,6 +432,15 @@ const localIsoDate = (date = new Date()): string => {
 const selectedOrOther = (select: HTMLSelectElement, other: HTMLInputElement): string =>
   select.value === "other" ? other.value.trim() : select.value.trim()
 
+const selectedRightsBasis = (): string => {
+  const detail = getTextArea("#rights").value.trim()
+  if (rightsBasisSelect.value === "other") return detail
+  return `${rightsBasisSelect.value}${detail ? ` ${detail}` : ""}`
+}
+
+const fileWithinBrowserLimit = (file: File): boolean => file.size <= MAX_BROWSER_AUDIO_BYTES
+const fileLimitMessage = (file: File): string => `${file.name} is ${formatBytes(file.size)}. This browser pilot accepts files up to ${formatBytes(MAX_BROWSER_AUDIO_BYTES)} to avoid freezing or losing work; preserve the original and use a smaller access copy here.`
+
 const syncConditionalSelect = (select: HTMLSelectElement, other: HTMLInputElement): void => {
   const needsOther = select.value === "other"
   other.hidden = !needsOther
@@ -597,13 +608,22 @@ const renderCorpus = (): void => {
     : '<option value="">No fingerprinted passports yet</option>'
 }
 
-const setSelectedFile = (file: File): void => {
+const setSelectedFile = (file: File): boolean => {
+  if (!fileWithinBrowserLimit(file)) {
+    selectedFile = null
+    fileLabel.textContent = "Choose an audio file"
+    fileMeta.textContent = `Browser pilot limit ${formatBytes(MAX_BROWSER_AUDIO_BYTES)}`
+    audioPreview.hidden = true
+    formMessage.textContent = fileLimitMessage(file)
+    return false
+  }
   selectedFile = file
   fileLabel.textContent = file.name
   fileMeta.textContent = `${formatBytes(file.size)} · ${file.type || "audio"}`
   if (audioPreview.src) URL.revokeObjectURL(audioPreview.src)
   audioPreview.src = URL.createObjectURL(file)
   audioPreview.hidden = false
+  return true
 }
 
 const syncSourceMode = (): void => {
@@ -674,7 +694,7 @@ form.addEventListener("submit", async (event) => {
       place: getInput("#place").value.trim(),
       recordedOn: getInput("#recorded-on").value || undefined,
       context: getTextArea("#context").value.trim(),
-      rightsBasis: `${rightsBasisSelect.value}${getTextArea("#rights").value.trim() ? ` ${getTextArea("#rights").value.trim()}` : ""}`,
+      rightsBasis: selectedRightsBasis(),
       evidenceUrl: getInput("#evidence-url").value.trim() || undefined,
       source,
     })
@@ -700,6 +720,10 @@ form.addEventListener("submit", async (event) => {
 
 derivativeFileInput.addEventListener("change", () => {
   derivativeFile = derivativeFileInput.files?.[0] ?? null
+  if (derivativeFile && !fileWithinBrowserLimit(derivativeFile)) {
+    derivativeMessage.textContent = fileLimitMessage(derivativeFile)
+    derivativeFile = null
+  }
   derivativeFileLabel.textContent = derivativeFile ? `${derivativeFile.name} · ${formatBytes(derivativeFile.size)}` : "Choose the derived audio file"
 })
 
@@ -762,8 +786,8 @@ receiptFile.addEventListener("change", async () => {
   const file = receiptFile.files?.[0]
   if (!file) return
   try {
-    const parsed = JSON.parse(await file.text()) as ArchiveManifest
-    if (!["unmute-archive/2.0", "unmute-archive/2.1"].includes(parsed.schema) || !parsed.source?.sha256) throw new Error("This receipt has no compatible fingerprint.")
+    const parsed = JSON.parse(await file.text()) as unknown
+    if (!isArchiveManifest(parsed) || !parsed.source?.sha256) throw new Error("This is not a complete, compatible fingerprinted Archive Passport receipt.")
     verificationTarget = parsed
     verifyPassport.value = ""
     verifyTargetNote.textContent = `Imported “${parsed.title}” · ${shortFingerprint(parsed)}`
@@ -776,6 +800,10 @@ receiptFile.addEventListener("change", async () => {
 
 verifyFile.addEventListener("change", () => {
   verificationFile = verifyFile.files?.[0] ?? null
+  if (verificationFile && !fileWithinBrowserLimit(verificationFile)) {
+    verifyTargetNote.textContent = fileLimitMessage(verificationFile)
+    verificationFile = null
+  }
   verifyFileLabel.textContent = verificationFile ? verificationFile.name : "Choose the audio file to check"
   verifyButton.disabled = !(verificationTarget?.source && verificationFile)
   verifyResult.hidden = true
@@ -800,21 +828,28 @@ verifyButton.addEventListener("click", async () => {
   if (!verificationTarget?.source || !verificationFile) return
   verifyButton.disabled = true
   verifyButton.textContent = "Comparing every byte…"
-  const digest = await sha256(verificationFile)
-  const matches = digest === verificationTarget.source.sha256
-  verifyResult.hidden = false
-  verifyResult.className = `verify-result ${matches ? "match" : "mismatch"}`
-  verifyResult.innerHTML = matches
-    ? `<strong>Exact match.</strong><p>This file is byte-for-byte identical to the source in the passport.</p><code>${escapeHtml(digest)}</code>`
-    : `<strong>Not the same file.</strong><p>The bytes differ. This may be an edit, re-export, transcoding, or another recording.</p><code>Expected ${escapeHtml(verificationTarget.source.sha256)}<br />Found ${escapeHtml(digest)}</code>`
+  try {
+    const digest = await sha256(verificationFile)
+    const matches = digest === verificationTarget.source.sha256
+    verifyResult.hidden = false
+    verifyResult.className = `verify-result ${matches ? "match" : "mismatch"}`
+    verifyResult.innerHTML = matches
+      ? `<strong>Exact match.</strong><p>This file is byte-for-byte identical to the source in the passport.</p><code>${escapeHtml(digest)}</code>`
+      : `<strong>Not the same file.</strong><p>The bytes differ. This may be an edit, re-export, transcoding, or another recording.</p><code>Expected ${escapeHtml(verificationTarget.source.sha256)}<br />Found ${escapeHtml(digest)}</code>`
 
-  if (matches && corpus.some((item) => item.archiveId === verificationTarget!.archiveId)) {
-    verificationTarget.events.push({ type: "verified", at: new Date().toISOString(), note: `Matched ${verificationFile.name}` })
-    corpus = updateInCorpus(verificationTarget)
-    renderCorpus()
+    if (matches && corpus.some((item) => item.archiveId === verificationTarget!.archiveId)) {
+      verificationTarget.events.push({ type: "verified", at: new Date().toISOString(), note: `Matched ${verificationFile.name}` })
+      corpus = updateInCorpus(verificationTarget)
+      renderCorpus()
+    }
+  } catch {
+    verifyResult.hidden = false
+    verifyResult.className = "verify-result mismatch"
+    verifyResult.innerHTML = "<strong>Comparison could not finish.</strong><p>The browser did not change or upload the file. Try a smaller local copy or reload the tool.</p>"
+  } finally {
+    verifyButton.disabled = false
+    verifyButton.textContent = "Compare every byte"
   }
-  verifyButton.disabled = false
-  verifyButton.textContent = "Compare every byte"
 })
 
 document.querySelector<HTMLButtonElement>("#export-json")!.addEventListener("click", () => exportCorpusJson(corpus))
