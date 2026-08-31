@@ -4,6 +4,8 @@ import {
   downloadText,
   importPassportJson,
   matchesResearchQuery,
+  publicSourceRecords,
+  reviewerRecords,
   saveAnnotation,
   type AtlasRecord,
   type Confidence,
@@ -19,8 +21,8 @@ app.innerHTML = `${suiteHeader("atlas")}
     <p class="suite-eyebrow">02 · Searchable cultural context</p>
     <h1>Find the music.<br><em>Keep the evidence visible.</em></h1>
     <p>Music Atlas turns archival passports and carefully labeled research leads into a searchable corpus. Ask a concrete question, inspect why each result matched, correct the metadata, and export the evidence behind your conclusion.</p>
-    <div class="suite-actions"><a class="suite-button primary" href="#explore">Explore the pilot corpus</a><button class="suite-button" id="quick-query">Try: dance remixes in Belarusian</button></div>
-    <div class="suite-boundary"><strong>What you are seeing:</strong> five transparent reviewer records drawn from the researcher’s documented work, plus any passports stored in this browser. This is a functional pilot—not a claim that the wider Belarusian archive has already been ingested.</div>
+    <div class="suite-actions"><a class="suite-button primary" href="#explore">Explore the pilot corpus</a><button class="suite-button" id="quick-query">Show Belarusian dance works &amp; remixes</button></div>
+    <div class="suite-boundary"><strong>What you are seeing:</strong> ${reviewerRecords.length} transparent seed records: five creator-documented works and ${publicSourceRecords.length} source-cited remix leads, plus any passports stored in this browser. This is a functional pilot—not a claim that Tuzin.fm or the wider Belarusian archive has already been ingested.</div>
   </section>
 
   <section class="atlas-workspace shell" id="explore">
@@ -35,7 +37,7 @@ app.innerHTML = `${suiteHeader("atlas")}
         <label class="atlas-field">Evidence<select id="confidence"><option value="">All confidence levels</option><option value="high">High evidence</option><option value="medium">Developing evidence</option><option value="recovery">Recovery lead</option></select></label>
       </div>
       <label class="atlas-check"><input type="checkbox" id="dance"><span>Dance-oriented only</span></label>
-      <label class="atlas-check"><input type="checkbox" id="reviewer" checked><span>Include reviewer pilot records</span></label>
+      <label class="atlas-check"><input type="checkbox" id="reviewer" checked><span>Include curated seed records</span></label>
       <button class="suite-button" id="reset">Reset filters</button>
       <hr>
       <div><span class="suite-kicker">Bring your own records</span><p class="atlas-note">Import Archive Passport JSON. Records remain in this browser until you export or clear them.</p><label class="suite-button import-button">Import passport JSON<input id="passport-import" type="file" accept="application/json,.json" hidden></label></div>
@@ -101,7 +103,8 @@ const bars = (title: string, rows: [string, number][], total: number): string =>
 const render = (): void => {
   visible = filtered()
   const years = visible.map((item) => item.year).filter((item): item is number => Boolean(item))
-  byId("result-title").textContent = search.value ? `Results for “${search.value}”` : "Pilot corpus"
+  const isDanceRemixQuery = search.value.toLowerCase().includes("dance") && search.value.toLowerCase().includes("remix")
+  byId("result-title").textContent = isDanceRemixQuery ? "Belarusian dance works & remixes — pilot results" : search.value ? `Results for “${search.value}”` : "Pilot corpus"
   byId("stats").innerHTML = [
     [visible.length, "visible records"],
     [unique(visible.map((item) => item.language)).length, "language labels"],
@@ -111,7 +114,7 @@ const render = (): void => {
   byId("results").innerHTML = visible.length ? visible.map((record, index) => `
     <button class="record-card" data-id="${escapeHtml(record.id)}">
       <span class="record-index">${String(index + 1).padStart(2, "0")}</span>
-      <div><div class="record-tags"><span class="suite-chip ${record.confidence}">${confidenceLabel(record.confidence)}</span><span>${escapeHtml(labelForKind(record.kind))}</span>${record.dance ? "<span>dance</span>" : ""}</div><h3>${escapeHtml(record.title)}</h3><p>${escapeHtml(record.creator)} · ${record.year ?? "date unknown"} · ${escapeHtml(record.language)}</p></div>
+      <div><div class="record-tags"><span class="suite-chip ${record.confidence}">${confidenceLabel(record.confidence)}</span><span>${escapeHtml(labelForKind(record.kind))}</span>${record.relationship.toLowerCase().includes("remix") ? "<span>remix</span>" : ""}${record.dance ? "<span>dance-oriented</span>" : ""}</div><h3>${escapeHtml(record.title)}</h3><p>${escapeHtml(record.creator)} · ${record.year ?? "date unknown"} · ${escapeHtml(record.language)}</p></div>
       <div class="record-source"><span>${escapeHtml(record.sourceStatus.replaceAll("-", " "))}</span><b>Open dossier →</b></div>
     </button>`).join("") : `<div class="suite-empty suite-panel"><h3>No honest match yet.</h3><p>Remove a filter, import a passport, or annotate a record. The pilot will not invent an answer.</p></div>`
   byId("analytics-grid").innerHTML = [
@@ -157,8 +160,8 @@ document.addEventListener("click", (event) => {
   if (record) openRecord(record)
 })
 ;[search, language, year, kind, confidence, dance, reviewer].forEach((element) => element.addEventListener("input", render))
-document.querySelectorAll<HTMLElement>("[data-query]").forEach((button) => button.addEventListener("click", () => { search.value = button.dataset.query ?? ""; dance.checked = true; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) }))
-byId("quick-query").addEventListener("click", () => { search.value = "Belarusian dance remix"; dance.checked = true; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) })
+document.querySelectorAll<HTMLElement>("[data-query]").forEach((button) => button.addEventListener("click", () => { search.value = button.dataset.query ?? ""; dance.checked = false; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) }))
+byId("quick-query").addEventListener("click", () => { search.value = "Belarusian dance remix"; dance.checked = false; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) })
 byId("reset").addEventListener("click", () => { search.value = ""; language.value = ""; year.value = ""; kind.value = ""; confidence.value = ""; dance.checked = false; reviewer.checked = true; render() })
 byId("dialog-close").addEventListener("click", () => dialog.close())
 dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close() })

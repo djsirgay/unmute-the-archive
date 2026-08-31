@@ -18,7 +18,9 @@ Unmute the Archive creates a portable record before that handoff happens.
 4. **Verify a file later.** Re-select an audio file and compare it with a local or imported passport. An exact match means every byte is identical.
 5. **Build a local research corpus.** Passports are stored in the browser and can be exported as JSON for preservation or CSV for analysis.
 6. **Create a research citation.** Every passport includes a human-readable citation and a portable JSON receipt.
-7. **Transfer to Audiotool optionally.** With an Audiotool developer client ID, a fingerprinted source can be uploaded as an unlisted sample and inserted into a selected session through Nexus. The transfer becomes another event in the same passport.
+7. **Search a source-visible Music Atlas.** The live pilot combines five creator-documented records with 13 independently cited Belarusian remix leads, structured filters, evidence dossiers, local corrections, and JSON/CSV export.
+8. **Document reversible access copies.** Restoration Lab creates a separate listening derivative, preserves the fingerprinted master, and records every intervention and human review note.
+9. **Transfer to Audiotool optionally.** With an Audiotool developer client ID, a fingerprinted source can be uploaded as an unlisted sample and inserted into a selected session through Nexus. The transfer becomes another event in the same passport.
 
 The included four-second demo clip is generated in the browser and contains no third-party recording or performance. It is safe for testing the full local workflow.
 
@@ -34,9 +36,9 @@ Authorship, dates, consent, and cultural context still require evidence and huma
 
 ## Pilot corpus: Belarusian Music in Exile
 
-The first-party pilot corpus starts with Sergéy Ulyanov's own Belarusian-language works from 2016–2026. This is intentionally described as a bounded founding collection, not as a comprehensive archive of Belarusian music.
+The corpus has two transparent seed layers. The first begins with Sergéy Ulyanov's own Belarusian-language works from 2016–2026. The second is a source-cited public remix index with 13 records documented by Budzma, 34mag, MusicBrainz, and CityDog. This is intentionally a bounded research pilot, not a claim that Tuzin.fm or the wider Belarusian archive has already been ingested.
 
-The pilot is methodologically useful because creator identity, rights, release context, public evidence, and cultural significance can be documented directly. Where an original source was lost with a hard drive, the record remains a recovery lead until an authentic source file is found and fingerprinted.
+The first layer is methodologically useful because creator identity, rights, release context, public evidence, and cultural significance can be documented directly. The public-source layer tests discovery, classification, and evidence visibility beyond the researcher's own catalog. Where an original source was lost with a hard drive, the record remains a recovery lead until an authentic source file is found and fingerprinted.
 
 ## Nexus integration
 
@@ -80,7 +82,7 @@ npm run build
 npm test
 ```
 
-The tests cover fingerprint stability, changed-file detection, explicit missing-source records, citations, and CSV export.
+The tests cover fingerprint stability, changed-file detection, explicit missing-source records, citations, CSV export, source-visible Music Atlas queries, and exclusion of incorrectly tagged dance results.
 
 ## Privacy and limitations
 

@@ -208,13 +208,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--moss); box-shado
 .transfer-controls select { grid-column: 1 / -1; }
 
 .derivative-section { color: #f4f2e9; background: #102019; }
-.derivative-grid { display: grid; grid-template-columns: .85fr 1.15fr; gap: 70px; align-items: start; }
+.derivative-grid { display: grid; grid-template-columns: minmax(340px, .8fr) minmax(560px, 1.2fr); gap: 48px; align-items: start; }
+.derivative-section .section-heading h2 { max-width: 520px; font-size: clamp(44px, 4.2vw, 64px); }
 .derivative-section .section-heading > p:last-of-type { color: #aeb8af; }
 .derivative-rules { display: grid; gap: 0; margin: 30px 0 0; padding: 0; border-top: 1px solid var(--line-dark); list-style: none; }
 .derivative-rules li { display: grid; gap: 5px; padding: 17px 0; border-bottom: 1px solid var(--line-dark); }
 .derivative-rules strong { color: var(--acid); font-size: 13px; }
 .derivative-rules span { color: #aeb8af; font-size: 12px; line-height: 1.5; }
-.derivative-form { position: relative; color: var(--ink); }
+.derivative-form { position: relative; padding: 32px; color: var(--ink); }
 
 .inverse { color: #f4f2e9; background: var(--ink); }
 .verify-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 80px; align-items: center; }
@@ -293,6 +294,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--moss); box-shado
   .stats-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
+@media (max-width: 1120px) {
+  .derivative-grid { grid-template-columns: 1fr; }
+  .derivative-section .section-heading h2 { max-width: 760px; }
+}
+
 @media (max-width: 820px) {
   .nav { grid-template-columns: 1fr auto; }
   .nav-links { display: none; }
@@ -324,7 +330,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--moss); box-shado
   .guide-card { padding: 20px; }
   .guide-card-head { display: grid; gap: 7px; }
   .section-heading h2, .pilot-intro h2, .limitations h2 { font-size: 43px; }
-  .archive-form, .receipt-panel, .panel-dark { padding: 20px; }
+  .archive-form, .receipt-panel, .panel-dark, .derivative-form { padding: 20px; }
   .mode-picker, .field-grid, .receipt-data { grid-template-columns: 1fr; }
   .receipt-data > div:nth-child(odd):not(.full-row) { padding-right: 0; border-right: 0; }
   .receipt-data > div:nth-child(even) { padding-left: 0; }
