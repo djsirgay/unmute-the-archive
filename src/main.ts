@@ -136,7 +136,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </div>
 
       <div class="create-grid">
-        <form class="archive-form panel" id="passport-form">
+        <form class="archive-form panel" id="passport-form" novalidate>
           <fieldset class="mode-picker">
             <legend>What do you have?</legend>
             <label><input type="radio" name="source-mode" value="present" checked /><span><strong>I have the audio file</strong><small>Create an integrity fingerprint.</small></span></label>
@@ -144,16 +144,62 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           </fieldset>
 
           <div class="field-grid">
-            <label>Title<input id="title" required placeholder="Recording title" /></label>
-            <label>Creator / contributor <span class="optional">use “Unknown” if not established</span><input id="creator" required placeholder="Person or community" /></label>
-            <label>Language <span class="optional">do not guess</span><input id="language" required placeholder="Belarusian" /></label>
-            <label>Place <span class="optional">do not guess</span><input id="place" required placeholder="Minsk / Los Angeles" /></label>
+            <label class="field-control">Title<input id="title" required placeholder="Recording title" /></label>
+            <label class="field-control">Creator / contributor <span class="optional">use “Unknown” if not established</span><input id="creator" required placeholder="Person or community" /></label>
+            <div class="field-control">
+              <label for="language">Language <span class="optional">choose “Unknown” instead of guessing</span></label>
+              <select id="language" required>
+                <option value="">Choose a language</option>
+                <option>Belarusian</option>
+                <option>Russian</option>
+                <option>English</option>
+                <option>Ukrainian</option>
+                <option>Polish</option>
+                <option>Multilingual</option>
+                <option>Instrumental / no linguistic content</option>
+                <option>Unknown / not established</option>
+                <option value="other">Other / not listed</option>
+              </select>
+              <input id="language-other" class="conditional-input" hidden placeholder="Enter the language" aria-label="Other language" />
+            </div>
+            <label class="field-control">Place <span class="optional">type or choose a common location</span><input id="place" required list="place-options" placeholder="Choose or enter a place" /></label>
+            <datalist id="place-options">
+              <option value="Minsk, Belarus"></option>
+              <option value="Los Angeles, United States"></option>
+              <option value="New York, United States"></option>
+              <option value="Warsaw, Poland"></option>
+              <option value="Vilnius, Lithuania"></option>
+              <option value="Berlin, Germany"></option>
+              <option value="Unknown / not established"></option>
+            </datalist>
             <label>Date recorded or released<input id="recorded-on" type="date" /></label>
-            <label>Collection<input id="collection" required value="Belarusian Music in Exile — Pilot Corpus" /></label>
+            <div class="field-control">
+              <label for="collection">Collection</label>
+              <select id="collection" required>
+                <option>Belarusian Music in Exile — Pilot Corpus</option>
+                <option>Nostalgai Recordz archive</option>
+                <option>Personal archive</option>
+                <option>Community-contributed archive</option>
+                <option>Unassigned research record</option>
+                <option value="other">Other / not listed</option>
+              </select>
+              <input id="collection-other" class="conditional-input" hidden placeholder="Enter the collection name" aria-label="Other collection" />
+            </div>
           </div>
 
           <label>Why this recording matters<textarea id="context" required rows="4" placeholder="Cultural context, circumstances, people, and what a future researcher should know."></textarea></label>
-          <label>Rights / consent basis<textarea id="rights" required rows="3" placeholder="I created this recording and control the source file, or I have explicit permission…"></textarea></label>
+          <div class="field-control rights-field">
+            <label for="rights-basis">Rights / consent basis</label>
+            <select id="rights-basis" required>
+              <option value="">Choose the closest verified basis</option>
+              <option>I created or performed this recording and control this source file.</option>
+              <option>I have explicit permission from the rights holder to preserve this source file.</option>
+              <option>This recording is in the public domain.</option>
+              <option>This is a recovery lead; rights have not yet been established.</option>
+              <option value="other">Other / requires explanation</option>
+            </select>
+            <textarea id="rights" rows="3" placeholder="Optional details: who gave permission, scope, date, or what still needs review."></textarea>
+          </div>
           <label>Public evidence or recovery lead <span class="optional">optional</span><input id="evidence-url" type="url" placeholder="https://…" /></label>
 
           <div id="source-file-fields">
@@ -168,10 +214,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           </div>
 
           <div class="form-actions">
-            <button class="button primary" id="create-button" type="submit">Create archival passport</button>
+            <button class="button primary" id="create-button" type="submit">Create passport → see result</button>
             <button class="button quiet" id="load-demo" type="button">Load safe demo</button>
           </div>
-          <p class="form-message" id="form-message" role="status"></p>
+          <p class="next-step-note">No additional step: after creation, the finished passport appears in the result panel on the right (or directly below on mobile).</p>
+          <div class="form-message" id="form-message" role="alert" aria-live="assertive"></div>
         </form>
 
         <aside class="receipt-panel panel" id="live-receipt" aria-live="polite">
@@ -340,6 +387,11 @@ const derivativeFileInput = document.querySelector<HTMLInputElement>("#derivativ
 const derivativeFileLabel = document.querySelector<HTMLElement>("#derivative-file-label")!
 const derivativeButton = document.querySelector<HTMLButtonElement>("#derivative-button")!
 const derivativeMessage = document.querySelector<HTMLElement>("#derivative-message")!
+const languageSelect = document.querySelector<HTMLSelectElement>("#language")!
+const languageOther = document.querySelector<HTMLInputElement>("#language-other")!
+const collectionSelect = document.querySelector<HTMLSelectElement>("#collection")!
+const collectionOther = document.querySelector<HTMLInputElement>("#collection-other")!
+const rightsBasisSelect = document.querySelector<HTMLSelectElement>("#rights-basis")!
 
 let selectedFile: File | null = null
 let verificationFile: File | null = null
@@ -354,6 +406,76 @@ const currentMode = (): "present" | "missing" =>
 
 const getInput = (selector: string): HTMLInputElement => document.querySelector<HTMLInputElement>(selector)!
 const getTextArea = (selector: string): HTMLTextAreaElement => document.querySelector<HTMLTextAreaElement>(selector)!
+const localIsoDate = (date = new Date()): string => {
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+}
+
+const selectedOrOther = (select: HTMLSelectElement, other: HTMLInputElement): string =>
+  select.value === "other" ? other.value.trim() : select.value.trim()
+
+const syncConditionalSelect = (select: HTMLSelectElement, other: HTMLInputElement): void => {
+  const needsOther = select.value === "other"
+  other.hidden = !needsOther
+  other.required = needsOther
+  if (!needsOther) other.value = ""
+}
+
+const clearValidationState = (): void => {
+  form.querySelectorAll<HTMLElement>(".is-invalid").forEach((element) => element.classList.remove("is-invalid"))
+  form.querySelectorAll<HTMLElement>("[aria-invalid='true']").forEach((element) => element.removeAttribute("aria-invalid"))
+}
+
+const validatePassportForm = (): boolean => {
+  clearValidationState()
+  const missing: string[] = []
+  const invalidControls: HTMLElement[] = []
+  const requireValue = (control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, label: string): void => {
+    if (!control.value.trim()) {
+      missing.push(label)
+      invalidControls.push(control)
+    }
+  }
+
+  requireValue(getInput("#title"), "title")
+  requireValue(getInput("#creator"), "creator or contributor")
+  requireValue(languageSelect, "language")
+  if (languageSelect.value === "other") requireValue(languageOther, "other language")
+  requireValue(getInput("#place"), "place")
+  requireValue(collectionSelect, "collection")
+  if (collectionSelect.value === "other") requireValue(collectionOther, "other collection")
+  requireValue(getTextArea("#context"), "why the recording matters")
+  requireValue(rightsBasisSelect, "rights or consent basis")
+  if (rightsBasisSelect.value === "other") requireValue(getTextArea("#rights"), "rights explanation")
+
+  const evidenceUrl = getInput("#evidence-url")
+  if (evidenceUrl.value && !evidenceUrl.validity.valid) {
+    missing.push("a complete evidence URL beginning with http:// or https://")
+    invalidControls.push(evidenceUrl)
+  }
+
+  if (currentMode() === "present" && !selectedFile) {
+    missing.push("audio file")
+    invalidControls.push(fileInput)
+  }
+  if (currentMode() === "present" && !rightsCheck.checked) {
+    missing.push("permission confirmation")
+    invalidControls.push(rightsCheck)
+  }
+
+  invalidControls.forEach((control) => {
+    control.setAttribute("aria-invalid", "true")
+    ;(control.closest<HTMLElement>("label, .field-control, .dropzone") ?? control).classList.add("is-invalid")
+  })
+
+  if (!missing.length) return true
+
+  formMessage.innerHTML = `<strong>The passport was not created yet.</strong><span>Please complete: ${escapeHtml(missing.join(", "))}.</span>`
+  const first = invalidControls[0]
+  ;(first.closest<HTMLElement>("label, .field-control, .dropzone") ?? first).scrollIntoView({ behavior: "smooth", block: "center" })
+  window.setTimeout(() => first.focus({ preventScroll: true }), 350)
+  return false
+}
 
 const renderReceipt = (manifest: ArchiveManifest): void => {
   const sourceLine = manifest.source
@@ -478,6 +600,13 @@ const syncSourceMode = (): void => {
 }
 
 sourceModes.forEach((input) => input.addEventListener("change", syncSourceMode))
+languageSelect.addEventListener("change", () => syncConditionalSelect(languageSelect, languageOther))
+collectionSelect.addEventListener("change", () => syncConditionalSelect(collectionSelect, collectionOther))
+form.addEventListener("input", (event) => {
+  const control = event.target as HTMLElement
+  control.removeAttribute("aria-invalid")
+  control.closest<HTMLElement>("label, .field-control, .dropzone")?.classList.remove("is-invalid")
+})
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0]
   if (file) setSelectedFile(file)
@@ -489,24 +618,22 @@ document.querySelector<HTMLButtonElement>("#load-demo")!.addEventListener("click
   setSelectedFile(makeDemoClip())
   getInput("#title").value = "Safe synthetic archive demo"
   getInput("#creator").value = "Unmute the Archive"
-  getInput("#language").value = "Instrumental"
+  languageSelect.value = "Instrumental / no linguistic content"
   getInput("#place").value = "Generated locally in the browser"
-  getInput("#recorded-on").value = new Date().toISOString().slice(0, 10)
+  getInput("#recorded-on").value = localIsoDate()
   getTextArea("#context").value = "A four-second rights-clear synthetic clip that demonstrates passport creation, fingerprinting, corpus storage, export, and later verification."
+  rightsBasisSelect.value = "I created or performed this recording and control this source file."
   getTextArea("#rights").value = "Generated locally by this application. No third-party recording or performance is included."
   rightsCheck.checked = true
+  clearValidationState()
+  formMessage.textContent = "Safe demo loaded. Select “Create passport → see result” to generate it now."
   form.scrollIntoView({ behavior: "smooth", block: "start" })
 })
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault()
   const mode = currentMode()
-  if (!form.reportValidity()) return
-  if (mode === "present" && !selectedFile) {
-    formMessage.textContent = "Choose an audio file before creating a fingerprinted passport."
-    fileInput.focus()
-    return
-  }
+  if (!validatePassportForm()) return
 
   createButton.disabled = true
   createButton.textContent = mode === "present" ? "Fingerprinting every byte…" : "Documenting recovery record…"
@@ -524,14 +651,14 @@ form.addEventListener("submit", async (event) => {
 
     currentManifest = buildManifest({
       status: source ? "fingerprinted" : "source-missing",
-      collection: getInput("#collection").value.trim(),
+      collection: selectedOrOther(collectionSelect, collectionOther),
       title: getInput("#title").value.trim(),
       creator: getInput("#creator").value.trim(),
-      language: getInput("#language").value.trim(),
+      language: selectedOrOther(languageSelect, languageOther),
       place: getInput("#place").value.trim(),
       recordedOn: getInput("#recorded-on").value || undefined,
       context: getTextArea("#context").value.trim(),
-      rightsBasis: getTextArea("#rights").value.trim(),
+      rightsBasis: `${rightsBasisSelect.value}${getTextArea("#rights").value.trim() ? ` ${getTextArea("#rights").value.trim()}` : ""}`,
       evidenceUrl: getInput("#evidence-url").value.trim() || undefined,
       source,
     })
@@ -541,12 +668,17 @@ form.addEventListener("submit", async (event) => {
     formMessage.textContent = source
       ? "Passport saved. You can now verify this file, export the record, or optionally transfer it to Audiotool."
       : "Recovery record saved. It remains explicitly unverified until a source file is recovered."
+    liveReceipt.classList.remove("result-ready")
+    window.requestAnimationFrame(() => liveReceipt.classList.add("result-ready"))
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      liveReceipt.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
     transferButton.disabled = !(client && source && projectSelect.value)
   } catch (error) {
     formMessage.textContent = error instanceof Error ? error.message : "The passport could not be created."
   } finally {
     createButton.disabled = false
-    createButton.textContent = "Create archival passport"
+    createButton.textContent = "Create passport → see result"
   }
 })
 
