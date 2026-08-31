@@ -59,9 +59,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <a href="/research/">Research home</a>
       <a href="/research/system/">System map</a>
       <a class="current" href="#top"><b>01</b> Archive Passport <small>live</small></a>
-      <a href="/research/system/#atlas"><b>02</b> Music Atlas <small>next</small></a>
-      <a href="/research/system/#restoration"><b>03</b> Restoration Lab <small>next</small></a>
-      <a href="#corpus">Data &amp; exports</a>
+      <a href="./atlas/"><b>02</b> Music Atlas <small>live pilot</small></a>
+      <a href="./restoration/"><b>03</b> Restoration Lab <small>live pilot</small></a>
+      <a href="./atlas/#analytics">Data &amp; analytics</a>
     </div>
   </nav>
 
