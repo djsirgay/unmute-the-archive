@@ -5,6 +5,7 @@ import {
   exportCorpusCsv,
   exportCorpusJson,
   readCorpus,
+  removeFromCorpus,
   saveToCorpus,
   updateInCorpus,
 } from "./corpus"
@@ -37,11 +38,12 @@ const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (charact
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <header class="site-header" id="top">
     <nav class="nav shell" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="Unmute the Archive home">
+      <a class="brand" href="#top">
         <span class="brand-mark" aria-hidden="true">U/A</span>
         <span>Unmute the Archive</span>
       </a>
       <div class="nav-links">
+        <a href="#guide">Guide</a>
         <a href="#create">Passport</a>
         <a href="#verify">Verify</a>
         <a href="#derivative">Derivative</a>
@@ -57,20 +59,21 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="hero-copy">
         <p class="eyebrow">Live module · Unmute Belarus research system</p>
         <h1>Prove a recording’s story. Preserve its future.</h1>
-        <p class="lede">Create a human-readable archival passport, check that a file is byte-for-byte unchanged, and build a structured research corpus. Sharing to Audiotool is optional.</p>
+        <p class="lede">Create a human-readable archival passport, document edited copies without replacing the master, verify exact files, and export a structured research corpus. The core workflow stays on this device.</p>
         <div class="hero-actions">
           <a class="button primary" href="#create">Start a passport</a>
-          <a class="button outline" href="#verify">Verify a recording</a>
+          <a class="button outline" href="#guide">Read the 3-minute guide</a>
         </div>
         <p class="privacy-note"><span aria-hidden="true">⌾</span> Audio stays on this device unless you explicitly transfer it.</p>
       </div>
 
-      <div class="hero-steps" aria-label="Three-step workflow">
-        <p class="eyebrow">Three clear steps</p>
+      <div class="hero-steps" aria-label="Four-step workflow">
+        <p class="eyebrow">Four clear steps</p>
         <ol>
           <li><span>1</span><div><strong>Passport</strong><p>Add a file and describe its origin, context, and rights.</p></div></li>
-          <li><span>2</span><div><strong>Verify</strong><p>Re-select a file later to prove it matches, byte for byte.</p></div></li>
-          <li><span>3</span><div><strong>Share <em>optional</em></strong><p>Send an unlisted sample to Audiotool and keep the receipt.</p></div></li>
+          <li><span>2</span><div><strong>Derivative <em>optional</em></strong><p>Record an edit or restoration without replacing the master.</p></div></li>
+          <li><span>3</span><div><strong>Verify</strong><p>Re-select a file later to prove it matches, byte for byte.</p></div></li>
+          <li><span>4</span><div><strong>Export</strong><p>Download JSON for preservation or CSV for analysis.</p></div></li>
         </ol>
       </div>
 
@@ -96,6 +99,35 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <article><span>03</span><div><strong>Research-ready corpus</strong><p>Local records export as JSON for preservation and CSV for analysis.</p></div></article>
     </section>
 
+    <section class="guide-section shell" id="guide">
+      <div class="section-heading row-heading">
+        <div><p class="eyebrow">How to use Archive Passport</p><h2>Test it safely in three minutes. Then document a real recording.</h2></div>
+        <p>No account is required. The app stores passport metadata and fingerprints in this browser; it does not store the audio itself. Exporting JSON is what creates a portable backup.</p>
+      </div>
+      <div class="guide-grid">
+        <article class="guide-card demo-path">
+          <div class="guide-card-head"><span>Recommended first visit</span><b>Safe demo path</b></div>
+          <ol>
+            <li><span>1</span><p>Go to <a href="#create">Create a passport</a> and choose <strong>Load safe demo</strong>.</p></li>
+            <li><span>2</span><p>Select <strong>Create archival passport</strong>. The synthetic clip is fingerprinted locally.</p></li>
+            <li><span>3</span><p>Go to <a href="#verify">Verify</a>, choose <strong>Use the safe synthetic demo file</strong>, then compare.</p></li>
+            <li><span>4</span><p>Confirm the exact match, then delete the demo record or export it to inspect the format.</p></li>
+          </ol>
+          <a class="button primary" href="#create">Run the safe demo ↓</a>
+        </article>
+        <article class="guide-card real-path">
+          <div class="guide-card-head"><span>For archival work</span><b>Real recording path</b></div>
+          <ol>
+            <li><span>1</span><p>Choose a rights-clear audio file—or mark the source missing and document only a recovery lead.</p></li>
+            <li><span>2</span><p>Describe provenance, context, and permission. Use <strong>Unknown</strong> instead of guessing.</p></li>
+            <li><span>3</span><p>If you create a restoration or edit, register it as a separate <a href="#derivative">documented derivative</a>.</p></li>
+            <li><span>4</span><p>Export the passport JSON and corpus. Keep copies in at least two trusted locations.</p></li>
+          </ol>
+          <p class="guide-warning"><strong>Important:</strong> a fingerprint proves exact file identity—not authorship, ownership, or historical truth.</p>
+        </article>
+      </div>
+    </section>
+
     <section class="tool-section shell" id="create">
       <div class="section-heading">
         <p class="eyebrow">01 · Create a passport</p>
@@ -113,9 +145,9 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
           <div class="field-grid">
             <label>Title<input id="title" required placeholder="Recording title" /></label>
-            <label>Creator / contributor<input id="creator" required placeholder="Person or community" /></label>
-            <label>Language<input id="language" required placeholder="Belarusian" /></label>
-            <label>Place<input id="place" required placeholder="Minsk / Los Angeles" /></label>
+            <label>Creator / contributor <span class="optional">use “Unknown” if not established</span><input id="creator" required placeholder="Person or community" /></label>
+            <label>Language <span class="optional">do not guess</span><input id="language" required placeholder="Belarusian" /></label>
+            <label>Place <span class="optional">do not guess</span><input id="place" required placeholder="Minsk / Los Angeles" /></label>
             <label>Date recorded or released<input id="recorded-on" type="date" /></label>
             <label>Collection<input id="collection" required value="Belarusian Music in Exile — Pilot Corpus" /></label>
           </div>
@@ -151,24 +183,12 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         </aside>
       </div>
 
-      <section class="audiotool-panel panel" id="audiotool-transfer">
-        <div>
-          <p class="eyebrow">Optional creative handoff</p>
-          <h3>Place a fingerprinted source in an Audiotool session.</h3>
-          <p id="auth-copy">The archival passport works independently. Audiotool transfer is an additional traceable reuse event.</p>
-        </div>
-        <div class="transfer-controls">
-          <button class="button outline" id="auth-button" type="button">Connect Audiotool</button>
-          <select id="project" disabled aria-label="Audiotool project"><option value="">Choose a destination project</option></select>
-          <button class="button secondary" id="transfer-button" type="button" disabled>Insert unlisted sample</button>
-        </div>
-      </section>
     </section>
 
     <section class="tool-section derivative-section" id="derivative">
       <div class="shell derivative-grid">
         <div class="section-heading compact">
-          <p class="eyebrow">02 · Document a derivative</p>
+          <p class="eyebrow">02 · Optional · Document a derivative</p>
           <h2>Preserve the master. Register every intervention.</h2>
           <p>This tool does not restore audio automatically. It links an edited or restored copy to an untouched fingerprinted master and records what changed, why, and who reviewed it.</p>
           <ul class="derivative-rules">
@@ -237,6 +257,21 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </div>
       <div class="stats-grid" id="corpus-stats"></div>
       <div class="corpus-list panel" id="corpus-list"></div>
+    </section>
+
+    <section class="optional-transfer tool-section shell" id="audiotool-transfer">
+      <div class="audiotool-panel panel">
+        <div>
+          <p class="eyebrow">Optional creative handoff · outside the core archive workflow</p>
+          <h3>Place a fingerprinted source in an Audiotool session.</h3>
+          <p id="auth-copy">The archival passport works independently. Audiotool transfer is only an additional traceable reuse event.</p>
+        </div>
+        <div class="transfer-controls">
+          <button class="button outline" id="auth-button" type="button">Connect Audiotool</button>
+          <select id="project" disabled aria-label="Audiotool project"><option value="">Choose a destination project</option></select>
+          <button class="button secondary" id="transfer-button" type="button" disabled>Insert unlisted sample</button>
+        </div>
+      </div>
     </section>
 
     <section class="pilot-section" id="pilot">
@@ -326,7 +361,17 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
     : "Original source missing · recovery record only"
   const statusLabel = manifest.status === "fingerprinted" ? "Fingerprint created" : "Recovery lead"
   const derivativeRows = (manifest.derivatives ?? []).map((derivative) => `
-    <li><strong>${escapeHtml(derivative.label)}</strong><span>${escapeHtml(derivative.purpose)} · ${escapeHtml(derivative.source.filename)}</span></li>
+    <li>
+      <details>
+        <summary><strong>${escapeHtml(derivative.label)}</strong><span>${escapeHtml(derivative.purpose)} · ${escapeHtml(derivative.source.filename)}</span></summary>
+        <dl>
+          <div><dt>Method</dt><dd>${escapeHtml(derivative.method)}</dd></div>
+          <div><dt>Intervention log</dt><dd>${escapeHtml(derivative.changeLog)}</dd></div>
+          ${derivative.reviewerNote ? `<div><dt>Human review</dt><dd>${escapeHtml(derivative.reviewerNote)}</dd></div>` : ""}
+          <div><dt>Derivative fingerprint</dt><dd class="mono">${escapeHtml(`${derivative.source.sha256.slice(0, 12)}…${derivative.source.sha256.slice(-12)}`)}</dd></div>
+        </dl>
+      </details>
+    </li>
   `).join("")
 
   liveReceipt.innerHTML = `
@@ -346,12 +391,27 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
       <button class="button quiet" id="download-passport" type="button">Download JSON</button>
       <button class="button quiet" id="copy-citation" type="button">Copy citation</button>
     </div>
+    <button class="text-button delete-local" id="delete-passport" type="button">Delete this local record</button>
     <p class="receipt-foot">Saved only in this browser. Export it to create a real backup.</p>
   `
   document.querySelector<HTMLButtonElement>("#download-passport")!.addEventListener("click", () => downloadManifest(manifest))
   document.querySelector<HTMLButtonElement>("#copy-citation")!.addEventListener("click", async (event) => {
     await navigator.clipboard.writeText(citationFor(manifest))
     ;(event.currentTarget as HTMLButtonElement).textContent = "Citation copied"
+  })
+  document.querySelector<HTMLButtonElement>("#delete-passport")!.addEventListener("click", () => {
+    const confirmed = window.confirm(`Delete “${manifest.title}” from this browser? Export the JSON first if you need a backup.`)
+    if (!confirmed) return
+    corpus = removeFromCorpus(manifest.archiveId)
+    currentManifest = null
+    liveReceipt.innerHTML = `
+      <div class="empty-receipt">
+        <p class="eyebrow">Local record deleted</p>
+        <h3>The passport was removed from this browser.</h3>
+        <p>The audio file was never stored here. You can create or import another passport at any time.</p>
+      </div>
+    `
+    renderCorpus()
   })
 }
 
@@ -371,9 +431,9 @@ const renderCorpus = (): void => {
         <div class="corpus-row corpus-header" role="row"><span>Recording</span><span>Language</span><span>Source status</span><span>Passport</span></div>
         ${corpus.map((item) => `
           <div class="corpus-row" role="row">
-            <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.creator)} · ${escapeHtml(item.recordedOn || "date unknown")}</small></span>
+            <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.creator)} · ${escapeHtml(item.recordedOn || "date unknown")}${item.derivatives?.length ? ` · ${item.derivatives.length} derivative${item.derivatives.length === 1 ? "" : "s"}` : ""}</small></span>
             <span>${escapeHtml(item.language)}</span>
-            <span class="status-chip ${item.status}">${item.status === "fingerprinted" ? "Verified source" : "Recovery lead"}</span>
+            <span class="status-chip ${item.status}">${item.status === "fingerprinted" ? "Fingerprint recorded" : "Recovery lead"}</span>
             <span><button class="text-button view-passport" data-id="${escapeHtml(item.archiveId)}" type="button">View receipt</button></span>
           </div>
         `).join("")}

@@ -26,6 +26,12 @@ export const updateInCorpus = (manifest: ArchiveManifest): ArchiveManifest[] => 
   return saveToCorpus(manifest)
 }
 
+export const removeFromCorpus = (archiveId: string): ArchiveManifest[] => {
+  const next = readCorpus().filter((item) => item.archiveId !== archiveId)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  return next
+}
+
 export const corpusStats = (corpus: ArchiveManifest[]) => {
   const languages = new Set(corpus.map((item) => item.language.trim()).filter(Boolean))
   const years = corpus
@@ -48,7 +54,8 @@ const csvCell = (value: string | number): string => `"${String(value).replaceAll
 export const corpusAsCsv = (corpus: ArchiveManifest[]): string => {
   const header = [
     "archive_id", "title", "creator", "language", "place", "recorded_on",
-    "status", "collection", "source_filename", "sha256", "evidence_url", "citation",
+    "status", "collection", "context", "rights_basis", "source_filename", "sha256",
+    "evidence_url", "derivative_count", "citation",
   ]
   const rows = corpus.map((item) => [
     item.archiveId,
@@ -59,9 +66,12 @@ export const corpusAsCsv = (corpus: ArchiveManifest[]): string => {
     item.recordedOn ?? "",
     item.status,
     item.collection,
+    item.context,
+    item.rightsBasis,
     item.source?.filename ?? "",
     item.source?.sha256 ?? "",
     item.evidenceUrl ?? "",
+    item.derivatives?.length ?? 0,
     citationFor(item),
   ])
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")

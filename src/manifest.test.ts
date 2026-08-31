@@ -71,6 +71,9 @@ describe("archival passports", () => {
     expect(csv).toContain('"archive_id"')
     expect(csv).toContain('"A title, with punctuation"')
     expect(csv).toContain('"source-missing"')
+    expect(csv).toContain('"context"')
+    expect(csv).toContain('"rights_basis"')
+    expect(csv).toContain('"derivative_count"')
   })
 
   it("links a documented derivative without replacing the source master", () => {
@@ -96,5 +99,30 @@ describe("archival passports", () => {
     expect(updated.source?.sha256).toBe("a".repeat(64))
     expect(updated.derivatives?.[0].source.sha256).toBe("b".repeat(64))
     expect(updated.events.at(-1)?.type).toBe("derived")
+  })
+
+  it("rejects a master mislabeled as a derivative and duplicate derivatives", () => {
+    const manifest = buildManifest({
+      status: "fingerprinted",
+      collection: "Pilot corpus",
+      title: "Archive master",
+      creator: "Creator",
+      language: "Belarusian",
+      place: "Minsk",
+      context: "Context",
+      rightsBasis: "Creator-owned.",
+      source: { filename: "master.wav", mediaType: "audio/wav", bytes: 10, sha256: "a".repeat(64) },
+    })
+    const derivative = {
+      label: "Restoration test A",
+      purpose: "Listening access",
+      method: "Documented noise reduction",
+      changeLog: "Reduced steady noise.",
+      source: { filename: "restored.wav", mediaType: "audio/wav", bytes: 12, sha256: "b".repeat(64) },
+    }
+
+    expect(() => addDerivative(manifest, { ...derivative, source: manifest.source! })).toThrow("byte-for-byte identical")
+    const updated = addDerivative(manifest, derivative)
+    expect(() => addDerivative(updated, derivative)).toThrow("already registered")
   })
 })

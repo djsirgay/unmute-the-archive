@@ -90,6 +90,12 @@ export const addDerivative = (
   values: Omit<ArchiveDerivative, "derivativeId" | "createdAt">,
 ): ArchiveManifest => {
   if (!manifest.source) throw new Error("A derivative must be linked to a fingerprinted source master.")
+  if (values.source.sha256 === manifest.source.sha256) {
+    throw new Error("This file is byte-for-byte identical to the master. Verify it instead of registering a derivative.")
+  }
+  if (manifest.derivatives?.some((item) => item.source.sha256 === values.source.sha256)) {
+    throw new Error("This exact derivative is already registered in the passport.")
+  }
   const timestamp = new Date().toISOString()
   const derivative: ArchiveDerivative = {
     derivativeId: crypto.randomUUID(),
