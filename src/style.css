@@ -36,6 +36,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .system-link { color: var(--acid); font: 700 10px "Space Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
 .local-mode { justify-self: end; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 99px; color: #ccd3cc; font-size: 11px; }
 .local-mode i { width: 7px; height: 7px; border-radius: 50%; background: var(--acid); box-shadow: 0 0 10px var(--acid); }
+.module-rail { position: sticky; top: 0; z-index: 30; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,.1); color: #dce3dc; background: rgba(23,32,25,.96); backdrop-filter: blur(16px); }
+.module-rail .shell { display: flex; width: max-content; min-width: min(1200px, calc(100% - 48px)); }
+.module-rail a { min-height: 48px; display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-right: 1px solid rgba(255,255,255,.1); color: #aab5ab; text-decoration: none; white-space: nowrap; font: 700 9px "Space Mono", monospace; text-transform: uppercase; }
+.module-rail a:first-child { border-left: 1px solid rgba(255,255,255,.1); }
+.module-rail a:hover, .module-rail a.current { color: var(--acid); background: rgba(216,255,104,.055); }
+.module-rail small { color: #758177; font-size: 8px; }
+.guide-section, .tool-section, #derivative, #corpus, #pilot { scroll-margin-top: 62px; }
 
 .hero { min-height: 700px; display: grid; grid-template-columns: 1.15fr .65fr .92fr; gap: 40px; align-items: center; padding-block: 72px 86px; color: #f6f3e9; background: var(--ink); box-shadow: 0 0 0 100vmax var(--ink); clip-path: inset(0 -100vmax); }
 .hero-copy h1 { max-width: 650px; margin: 0; font: 400 clamp(58px, 6vw, 92px)/.92 "Newsreader", serif; letter-spacing: -.045em; }
@@ -268,6 +275,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--moss); box-shado
 .limitations strong { font-size: 13px; }
 .limitations span { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .footer { display: flex; justify-content: space-between; gap: 24px; padding-block: 32px 45px; border-top: 1px solid var(--line); color: var(--muted); font: 10px "Space Mono", monospace; text-transform: uppercase; }
+.module-sequence { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 70px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--line); }
+.module-sequence a { min-height: 120px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 24px; color: var(--ink); background: var(--paper-bright); text-decoration: none; }
+.module-sequence a:last-child { align-items: flex-end; text-align: right; }
+.module-sequence a:hover { background: #eef3e9; }
+.module-sequence small { color: var(--moss); font: 700 9px "Space Mono", monospace; text-transform: uppercase; }
+.module-sequence strong { font: 500 24px "Newsreader", serif; }
 
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1.1fr .9fr; }
@@ -324,6 +337,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--moss); box-shado
   .transfer-controls { grid-template-columns: 1fr; }
   .transfer-controls select { grid-column: auto; }
   .footer { display: grid; }
+  .module-rail .shell { min-width: 100%; }
+  .module-sequence { grid-template-columns: 1fr; }
+  .module-sequence a:last-child { align-items: flex-start; text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {

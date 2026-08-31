@@ -54,6 +54,17 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </nav>
   </header>
 
+  <nav class="module-rail" aria-label="Unmute Belarus module navigation">
+    <div class="shell">
+      <a href="/research/">Research home</a>
+      <a href="/research/system/">System map</a>
+      <a class="current" href="#top"><b>01</b> Archive Passport <small>live</small></a>
+      <a href="/research/system/#atlas"><b>02</b> Music Atlas <small>next</small></a>
+      <a href="/research/system/#restoration"><b>03</b> Restoration Lab <small>next</small></a>
+      <a href="#corpus">Data &amp; exports</a>
+    </div>
+  </nav>
+
   <main>
     <section class="hero shell">
       <div class="hero-copy">
@@ -352,6 +363,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       </ul>
     </section>
   </main>
+
+  <nav class="module-sequence shell" aria-label="Previous and next research modules">
+    <a href="/research/system/"><small>← Back</small><strong>Unmute Belarus system map</strong></a>
+    <a href="/research/system/#atlas"><small>Next module →</small><strong>02 · Music Atlas</strong></a>
+  </nav>
 
   <footer class="footer shell">
     <p>Designed and built by Sergéy Ulyanov · <a href="/research/system/">Unmute Belarus research system</a></p>
