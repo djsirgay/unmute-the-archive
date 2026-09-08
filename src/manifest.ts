@@ -52,6 +52,10 @@ export type ArchiveManifest = {
 
 export const MAX_BROWSER_AUDIO_BYTES = 200 * 1_024 * 1_024
 
+export const isPublicEvidenceUrl = (value: string): boolean => {
+  try { return ["https:", "http:"].includes(new URL(value).protocol) } catch { return false }
+}
+
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -64,7 +68,7 @@ const isSha256 = (value: unknown): value is string =>
 const isArchiveSource = (value: unknown): value is NonNullable<ArchiveManifest["source"]> => {
   if (!isPlainRecord(value)) return false
   return hasString(value, "filename") && hasString(value, "mediaType") &&
-    typeof value.bytes === "number" && Number.isFinite(value.bytes) && value.bytes >= 0 &&
+    typeof value.bytes === "number" && Number.isSafeInteger(value.bytes) && value.bytes > 0 &&
     isSha256(value.sha256)
 }
 
@@ -93,7 +97,7 @@ export const isArchiveManifest = (value: unknown): value is ArchiveManifest => {
   const required = ["archiveId", "createdAt", "updatedAt", "collection", "title", "creator", "language", "place", "context", "rightsBasis"]
   if (!required.every((key) => hasString(value, key))) return false
   if (value.recordedOn !== undefined && typeof value.recordedOn !== "string") return false
-  if (value.evidenceUrl !== undefined && typeof value.evidenceUrl !== "string") return false
+  if (value.evidenceUrl !== undefined && (typeof value.evidenceUrl !== "string" || !isPublicEvidenceUrl(value.evidenceUrl))) return false
   if (!Array.isArray(value.events) || !value.events.every(isArchiveEvent)) return false
   if (value.derivatives !== undefined && (!Array.isArray(value.derivatives) || !value.derivatives.every(isArchiveDerivative))) return false
   if (value.status === "fingerprinted") return isArchiveSource(value.source)
@@ -181,7 +185,7 @@ export const citationFor = (manifest: ArchiveManifest): string => {
   const year = manifest.recordedOn?.slice(0, 4) || "n.d."
   const sourceNote = manifest.status === "source-missing"
     ? "Metadata-only recovery record"
-    : "Fingerprint-verified local source"
+    : "Source fingerprint recorded"
 
   return `${manifest.creator}. (${year}). ${manifest.title} [${manifest.language} audio]. ${manifest.place}: ${manifest.collection}. ${sourceNote}. Archival Passport ${manifest.archiveId}.`
 }

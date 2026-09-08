@@ -1,4 +1,4 @@
-import { readCorpus, saveToCorpus } from "./corpus"
+import { readCorpus, writeCorpus } from "./corpus"
 import { isArchiveManifest, type ArchiveManifest } from "./manifest"
 
 export type Confidence = "high" | "medium" | "recovery"
@@ -54,7 +54,6 @@ const creatorRecords: AtlasRecord[] = [
     relationship: "original work",
     genres: ["pop", "electronic"],
     themes: ["Belarusian language", "cross-border circulation"],
-    bpm: 118,
     dance: false,
     confidence: "high",
     sourceStatus: "public-evidence",
@@ -77,7 +76,6 @@ const creatorRecords: AtlasRecord[] = [
     relationship: "co-authored original work",
     genres: ["electronic", "protest music"],
     themes: ["democratic movement", "freedom of expression", "diaspora memory"],
-    bpm: 124,
     dance: false,
     confidence: "high",
     sourceStatus: "public-evidence",
@@ -100,7 +98,6 @@ const creatorRecords: AtlasRecord[] = [
     relationship: "curated mix of related works",
     genres: ["dance", "electronic", "DJ mix"],
     themes: ["exile", "cultural continuity", "contextual listening"],
-    bpm: 126,
     dance: true,
     confidence: "medium",
     sourceStatus: "public-evidence",
@@ -122,7 +119,6 @@ const creatorRecords: AtlasRecord[] = [
     relationship: "mix / contextual compilation",
     genres: ["dance", "electronic", "archive mix"],
     themes: ["broadcast history", "Belarusian language", "media memory"],
-    bpm: 125,
     dance: true,
     confidence: "medium",
     sourceStatus: "recovery-lead",
@@ -272,7 +268,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     id: "public-akute-iholki-deech",
     title: "Iholki — Deech remix",
     creator: "Akute / Deech",
-    year: 2014,
+    year: 2012,
     language: "Belarusian",
     place: "Belarus",
     kind: "derivative",
@@ -285,7 +281,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     sourceStatus: "public-evidence",
     rightsStatus: "Public source documents the release; this corpus does not assert recording rights.",
     collection: "Public-source Belarusian Remix Index — pilot",
-    summary: "One of the source-documented remixes issued with Akute’s Iholki EP.",
+    summary: "One of the source-documented remixes issued with Akute’s Iholki EP, reported by Budzma on October 25, 2012.",
     evidenceUrl: "https://budzma.org/news/akute-neshta-serca-zakalola-mr3-prem%25e2%2580%2599era.html",
     evidenceLabel: "Budzma EP record",
     isDemo: true,
@@ -294,7 +290,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     id: "public-akute-iholki-pryzma",
     title: "Iholki — Pryzma remix",
     creator: "Akute / Pryzma",
-    year: 2014,
+    year: 2012,
     language: "Belarusian",
     place: "Belarus",
     kind: "derivative",
@@ -307,7 +303,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     sourceStatus: "public-evidence",
     rightsStatus: "Public source documents the release; this corpus does not assert recording rights.",
     collection: "Public-source Belarusian Remix Index — pilot",
-    summary: "One of the source-documented remixes issued with Akute’s Iholki EP.",
+    summary: "One of the source-documented remixes issued with Akute’s Iholki EP, reported by Budzma on October 25, 2012.",
     evidenceUrl: "https://budzma.org/news/akute-neshta-serca-zakalola-mr3-prem%25e2%2580%2599era.html",
     evidenceLabel: "Budzma EP record",
     isDemo: true,
@@ -316,7 +312,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     id: "public-akute-adzinotstva-dj-boston",
     title: "Adzinotstva — DJ Boston remix",
     creator: "Akute / DJ Boston",
-    year: 2014,
+    year: 2012,
     language: "Belarusian",
     place: "Belarus",
     kind: "derivative",
@@ -329,7 +325,7 @@ export const publicSourceRecords: AtlasRecord[] = [
     sourceStatus: "public-evidence",
     rightsStatus: "Public source documents the release; this corpus does not assert recording rights.",
     collection: "Public-source Belarusian Remix Index — pilot",
-    summary: "A source-documented electronic reinterpretation explicitly described as suitable for discos and radio.",
+    summary: "An electronic reinterpretation reported by Budzma on October 25, 2012, and explicitly described as intended for discos and radio.",
     evidenceUrl: "https://budzma.org/news/akute-neshta-serca-zakalola-mr3-prem%25e2%2580%2599era.html",
     evidenceLabel: "Budzma EP record",
     isDemo: true,
@@ -405,19 +401,19 @@ export const publicSourceRecords: AtlasRecord[] = [
     title: "Я пойму — Belyaev Remix",
     creator: "Palina / Belyaev",
     year: 2017,
-    language: "Belarusian",
+    language: "Unknown / vocal language needs review",
     place: "Belarus / worldwide release",
     kind: "derivative",
     format: "Digital single / remix",
     relationship: "official remix of Palina’s Я пойму",
     genres: ["electronic", "remix"],
-    themes: ["Belarusian language", "digital circulation"],
+    themes: ["digital circulation", "vocal language needs review"],
     dance: false,
-    confidence: "high",
+    confidence: "medium",
     sourceStatus: "public-evidence",
     rightsStatus: "MusicBrainz documents the official release; this corpus does not assert recording rights.",
     collection: "Public-source Belarusian Remix Index — pilot",
-    summary: "An official Belarusian-language remix single documented by MusicBrainz with a worldwide release date of October 9, 2017.",
+    summary: "A remix single documented by MusicBrainz with a worldwide release date of October 9, 2017. The release metadata’s language label does not independently establish the language sung; this lead is excluded from Belarusian-language results pending review.",
     evidenceUrl: "https://musicbrainz.org/release/4bd6d2af-fb13-4009-85e1-6ecc2e49a642",
     evidenceLabel: "MusicBrainz release record",
     isDemo: true,
@@ -448,15 +444,36 @@ export const publicSourceRecords: AtlasRecord[] = [
 
 export const reviewerRecords: AtlasRecord[] = [...creatorRecords, ...publicSourceRecords]
 
-const readAnnotations = (): Record<string, AtlasAnnotation> => {
+export const readAnnotations = (): Record<string, AtlasAnnotation> => {
   try {
-    return JSON.parse(localStorage.getItem(ANNOTATION_KEY) ?? "{}") as Record<string, AtlasAnnotation>
+    const parsed: unknown = JSON.parse(localStorage.getItem(ANNOTATION_KEY) ?? "{}")
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter(([, value]) => isAtlasAnnotation(value)))
   } catch {
     return {}
   }
 }
 
+const isAtlasAnnotation = (value: unknown): value is AtlasAnnotation => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const item = value as Record<string, unknown>
+  return Object.keys(item).every((key) => ["kind", "genres", "themes", "bpm", "dance", "relationship", "confidence"].includes(key)) &&
+    (item.kind === undefined || ["song", "album", "dj-set", "mix", "recording", "derivative"].includes(String(item.kind))) &&
+    (item.confidence === undefined || ["high", "medium", "recovery"].includes(String(item.confidence))) &&
+    ["genres", "themes"].every((key) => item[key] === undefined || (Array.isArray(item[key]) && item[key].every((tag: unknown) => typeof tag === "string"))) &&
+    (item.bpm === undefined || (typeof item.bpm === "number" && item.bpm > 0 && item.bpm <= 300)) &&
+    (item.dance === undefined || typeof item.dance === "boolean") &&
+    (item.relationship === undefined || typeof item.relationship === "string")
+}
+
+export const resetAnnotation = (id: string): void => {
+  const annotations = readAnnotations()
+  delete annotations[id]
+  localStorage.setItem(ANNOTATION_KEY, JSON.stringify(annotations))
+}
+
 export const saveAnnotation = (id: string, annotation: AtlasAnnotation): void => {
+  if (!isAtlasAnnotation(annotation)) throw new Error("The annotation contains an invalid field.")
   const annotations = readAnnotations()
   annotations[id] = { ...annotations[id], ...annotation }
   localStorage.setItem(ANNOTATION_KEY, JSON.stringify(annotations))
@@ -476,7 +493,7 @@ const recordFromManifest = (manifest: ArchiveManifest): AtlasRecord => ({
   genres: [],
   themes: ["archival record"],
   dance: false,
-  confidence: manifest.status === "fingerprinted" ? "high" : "recovery",
+    confidence: manifest.status === "fingerprinted" ? "medium" : "recovery",
   sourceStatus: manifest.status === "fingerprinted" ? "fingerprinted" : "recovery-lead",
   rightsStatus: manifest.rightsBasis,
   collection: manifest.collection,
@@ -520,13 +537,21 @@ export const atlasRecords = (includeReviewer = true): AtlasRecord[] => {
 export const importPassportJson = (raw: string): number => {
   const parsed = JSON.parse(raw) as unknown
   const values = Array.isArray(parsed) ? parsed : [parsed]
-  let imported = 0
-  for (const value of values) {
-    if (!isArchiveManifest(value)) continue
-    saveToCorpus(value)
-    imported += 1
+  if (!values.length || !values.every(isArchiveManifest)) {
+    throw new Error("No records were imported. Choose a complete Archive Passport JSON file or corpus backup; Atlas search-result exports are reports, not passport backups.")
   }
-  return imported
+  const existing = readCorpus()
+  const byId = new Map(existing.map((record) => [record.archiveId, record]))
+  let added = 0
+  for (const value of values) {
+    const saved = byId.get(value.archiveId)
+    if (saved && JSON.stringify(saved) !== JSON.stringify(value)) {
+      throw new Error(`No records were imported: “${value.title}” has a different version in this browser. Export the current corpus before reviewing the two versions.`)
+    }
+    if (!saved) { byId.set(value.archiveId, value); added += 1 }
+  }
+  if (added) writeCorpus([...byId.values()])
+  return added
 }
 
 export const downloadText = (content: string, type: string, filename: string): void => {
@@ -538,72 +563,4 @@ export const downloadText = (content: string, type: string, filename: string): v
   URL.revokeObjectURL(url)
 }
 
-export const recordSearchText = (record: AtlasRecord): string => [
-  record.title, record.creator, record.year, record.language, record.place, record.kind,
-  record.format, record.relationship, ...record.genres, ...record.themes, record.summary,
-  record.collection, record.rightsStatus, record.dance ? "dance dancing club" : "",
-].join(" ").toLowerCase()
-
-const normalizeBasicToken = (value: string): string => value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
-
-const QUERY_STOP_WORDS = new Set([
-  "the", "and", "all", "find", "show", "give", "me", "of", "in", "on", "or", "for", "with",
-  "найди", "найти", "покажи", "все", "мне", "и", "или", "на", "по", "с", "для",
-  "знайдзі", "знайсці", "пакажы", "усе", "ўсе", "мне", "і", "ці", "або", "на", "па", "з", "для",
-].map(normalizeBasicToken))
-
-const normalizeQueryToken = (raw: string): string => {
-  const token = normalizeBasicToken(raw)
-  if (/^(belarus|беларус|белорус)/u.test(token)) return "belarus"
-  if (/^(dance|dancing|танц|танцав|танцев)/u.test(token)) return "dance"
-  if (/^(remix|remixes|mixes|рэмiкс|рэмікс|ремикс)/u.test(token)) return "mix"
-  if (/^(songs?|песн|песень)/u.test(token)) return "song"
-  if (/^(tracks?|трек|трэк)/u.test(token)) return "track"
-  if (/^(works?|работ|твор|прац)/u.test(token)) return "work"
-  if (/^(music|музык|музыч)/u.test(token)) return "music"
-  return token
-}
-
-export const queryTokens = (value: string): string[] => value.split(/[^\p{L}\p{N}]+/u)
-  .map(normalizeQueryToken)
-  .filter((token) => token.length > 1 && !QUERY_STOP_WORDS.has(token))
-
-export const isDanceRemixQuery = (query: string): boolean => {
-  const tokens = queryTokens(query)
-  return tokens.includes("dance") && tokens.includes("mix")
-}
-
-export const matchesResearchQuery = (record: AtlasRecord, query: string): boolean => {
-  const haystack = recordSearchText(record)
-  const tokens = queryTokens(query)
-  const asksDanceOrRemix = tokens.includes("dance") && tokens.includes("mix")
-  const asksBelarusianLanguage = tokens.includes("belarus")
-  const genericMediaTerms = new Set(["song", "track", "work", "music", "content", "контент", "музык", "музыка"])
-  const required = asksDanceOrRemix
-    ? tokens.filter((token) => token !== "dance" && token !== "mix" && token !== "belarus" && !genericMediaTerms.has(token))
-    : tokens.filter((token) => token !== "belarus")
-  const categoryMatch = !asksDanceOrRemix || record.dance || ["mix", "dj-set"].includes(record.kind) || record.relationship.toLowerCase().includes("remix") || record.genres.includes("remix")
-  const languageMatch = !asksBelarusianLanguage || record.language.toLowerCase().includes("belarus")
-  return categoryMatch && languageMatch && required.every((token) =>
-    haystack.includes(token) ||
-    (token === "mix" && ["mix", "dj-set", "derivative"].includes(record.kind)) ||
-    (token === "song" && record.kind === "song") ||
-    (token === "track" && ["song", "recording", "derivative"].includes(record.kind)) ||
-    (token === "work" && ["song", "album", "recording", "derivative"].includes(record.kind)),
-  )
-}
-
-export const researchRelevance = (record: AtlasRecord, query: string): number => {
-  if (!query.trim()) return 0
-  const haystack = recordSearchText(record)
-  const title = record.title.toLowerCase()
-  const tokens = queryTokens(query)
-  let score = tokens.reduce((total, token) => total + (title.includes(token) ? 4 : haystack.includes(token) ? 1 : 0), 0)
-  if (isDanceRemixQuery(query)) {
-    if (record.relationship.toLowerCase().includes("remix")) score += 8
-    if (record.kind === "derivative" && (record.relationship.toLowerCase().includes("remix") || record.genres.includes("remix"))) score += 5
-    if (record.dance) score += 3
-    if (record.confidence === "high") score += 2
-  }
-  return score
-}
+export { isDanceRemixQuery, matchesResearchQuery, researchRelevance } from "./research-query"

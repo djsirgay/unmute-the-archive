@@ -3,16 +3,20 @@ import {
   atlasRecords,
   downloadText,
   importPassportJson,
-  isDanceRemixQuery,
   matchesResearchQuery,
   publicSourceRecords,
   researchRelevance,
   reviewerRecords,
+  resetAnnotation,
+  readAnnotations,
   saveAnnotation,
   type AtlasRecord,
   type Confidence,
   type RecordKind,
 } from "./suite-data"
+import { languageGroup, queryExplanation, isRemix, matchReason } from "./research-query"
+import { csvCell, exportCorpusJson, readCorpus } from "./corpus"
+import { mountCorpusWarning } from "./storage-warning"
 import { confidenceLabel, escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 
 const app = document.querySelector<HTMLDivElement>("#app")!
@@ -31,7 +35,8 @@ app.innerHTML = `${suiteHeader("atlas")}
     <aside class="atlas-filters suite-panel">
       <div><span class="suite-kicker">Research question</span><h2>Search &amp; filter</h2></div>
       <label class="atlas-field">Search all fields<input id="search" type="search" placeholder="artist, dance, exile, remix… / танцавальныя рэміксы…"></label>
-      <button class="atlas-suggest" data-query="dance Belarusian remix">↳ Dance works and remixes in Belarusian</button>
+      <button class="atlas-suggest" data-query="Belarusian dance works or remixes">↳ Belarusian dance works or remixes</button>
+      <button class="atlas-suggest" data-query="Belarusian dance remixes">↳ Only dance-oriented remixes</button>
       <div class="filter-grid">
         <label class="atlas-field">Language<select id="language"><option value="">All languages</option></select></label>
         <label class="atlas-field">Year<select id="year"><option value="">All years</option></select></label>
@@ -42,11 +47,12 @@ app.innerHTML = `${suiteHeader("atlas")}
       <label class="atlas-check"><input type="checkbox" id="reviewer" checked><span>Include curated seed records</span></label>
       <button class="suite-button" id="reset">Reset filters</button>
       <hr>
-      <div><span class="suite-kicker">Bring your own records</span><p class="atlas-note">Import validated Archive Passport JSON. Records remain in this browser until you export or clear them.</p><label class="suite-button import-button">Import passport JSON<input id="passport-import" type="file" accept="application/json,.json" hidden></label><output class="atlas-import-status" id="import-status" aria-live="polite"></output></div>
+      <div><span class="suite-kicker">Your local archive</span><p class="atlas-note">Passports stay in this browser. A backup saves the full passports and their intervention history; the result exports are research reports.</p><button class="suite-button import-button" id="backup-passports">Back up all local passports</button><button class="suite-button import-button" id="import-trigger">Import passport backup</button><input id="passport-import" type="file" accept="application/json,.json" hidden><output class="atlas-import-status" id="import-status" aria-live="polite"></output></div>
     </aside>
 
     <div class="atlas-results">
-      <header class="atlas-results-head"><div><span class="suite-kicker">Query result</span><h2 id="result-title">Pilot corpus</h2></div><div class="suite-actions compact"><button class="suite-button" id="export-json">JSON</button><button class="suite-button" id="export-csv">CSV</button></div></header>
+      <header class="atlas-results-head"><div><span class="suite-kicker">Query result</span><h2 id="result-title">Pilot corpus</h2></div><div class="suite-actions compact"><button class="suite-button" id="export-json">Export result JSON</button><button class="suite-button" id="export-csv">Export result CSV</button></div></header>
+      <p class="query-explanation" id="query-explanation" aria-live="polite"></p>
       <div class="atlas-stats" id="stats"></div>
       <div class="result-list" id="results" aria-live="polite"></div>
     </div>
@@ -60,7 +66,7 @@ app.innerHTML = `${suiteHeader("atlas")}
   <section class="atlas-sources shell" id="sources">
     <div class="section-intro"><span class="suite-kicker">Seed evidence register</span><h2>Where the 13 public remix leads come from.</h2><p>The pilot separates a source page from the records inferred from it. Each lead opens the cited evidence; a link does not transfer recording rights or turn a secondary report into a master file.</p></div>
     <div class="source-grid" id="source-grid"></div>
-    <p class="source-audit-note">Six public source pages checked on August 31, 2026. The register is bounded and revisable—not a claim of comprehensive coverage.</p>
+    <p class="source-audit-note">Six public source pages reviewed on September 8, 2026. The register is bounded and revisable—not a claim of comprehensive coverage.</p>
   </section>
 
   <section class="atlas-method shell">
@@ -85,16 +91,18 @@ let visible: AtlasRecord[] = []
 const labelForKind = (value: string): string => value.replace("dj-set", "DJ set").replace("derivative", "documented derivative")
 const unique = <T,>(values: T[]): T[] => [...new Set(values)]
 const fillOptions = (): void => {
+  const selected = { language: language.value, year: year.value, kind: kind.value }
   const records = atlasRecords(true)
-  language.innerHTML = `<option value="">All languages</option>${unique(records.map((item) => item.language)).sort().map((item) => `<option>${escapeHtml(item)}</option>`).join("")}`
-  year.innerHTML = `<option value="">All years</option>${unique(records.map((item) => item.year).filter((item): item is number => Boolean(item))).sort((a, b) => b - a).map((item) => `<option>${item}</option>`).join("")}`
+  language.innerHTML = `<option value="">All languages</option>${unique(records.map((item) => languageGroup(item.language))).sort().map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("")}`
+  year.innerHTML = `<option value="">All years</option>${unique(records.map((item) => item.year).filter((item): item is number => Boolean(item))).sort((a, b) => b - a).map((item) => `<option value="${item}">${item}</option>`).join("")}`
   kind.innerHTML = `<option value="">All types</option>${unique(records.map((item) => item.kind)).sort().map((item) => `<option value="${item}">${labelForKind(item)}</option>`).join("")}`
+  language.value = selected.language; year.value = selected.year; kind.value = selected.kind
 }
 
 const filtered = (): AtlasRecord[] => {
   const records = atlasRecords(reviewer.checked).filter((record) =>
     matchesResearchQuery(record, search.value) &&
-    (!language.value || record.language === language.value) &&
+    (!language.value || languageGroup(record.language) === language.value) &&
     (!year.value || record.year === Number(year.value)) &&
     (!kind.value || record.kind === kind.value) &&
     (!confidence.value || record.confidence === confidence.value) &&
@@ -115,8 +123,8 @@ const bars = (title: string, rows: [string, number][], total: number): string =>
 const render = (): void => {
   visible = filtered()
   const years = visible.map((item) => item.year).filter((item): item is number => Boolean(item))
-  const danceRemixIntent = isDanceRemixQuery(search.value)
-  byId("result-title").textContent = danceRemixIntent ? "Belarusian dance works & remixes — pilot results" : search.value ? `Results for “${search.value}”` : "Pilot corpus"
+  byId("result-title").textContent = search.value ? `Results for “${search.value}”` : "Pilot corpus"
+  byId("query-explanation").textContent = queryExplanation(search.value)
   const evidenceLinks = unique(visible.map((item) => item.evidenceUrl).filter((item): item is string => Boolean(item)))
   byId("stats").innerHTML = [
     [visible.length, "visible records"],
@@ -128,8 +136,8 @@ const render = (): void => {
   byId("results").innerHTML = visible.length ? visible.map((record, index) => `
     <button class="record-card" data-id="${escapeHtml(record.id)}">
       <span class="record-index">${String(index + 1).padStart(2, "0")}</span>
-      <div><div class="record-tags"><span class="suite-chip ${record.confidence}">${confidenceLabel(record.confidence)}</span><span>${escapeHtml(labelForKind(record.kind))}</span>${record.relationship.toLowerCase().includes("remix") ? "<span>remix</span>" : ""}${record.dance ? "<span>dance-oriented</span>" : ""}</div><h3>${escapeHtml(record.title)}</h3><p>${escapeHtml(record.creator)} · ${record.year ?? "date unknown"} · ${escapeHtml(record.language)}</p></div>
-      <div class="record-source"><span>${escapeHtml(record.sourceStatus.replaceAll("-", " "))}</span><b>Open dossier →</b></div>
+      <div><div class="record-tags"><span class="suite-chip ${record.confidence}">${confidenceLabel(record.confidence)}</span><span>${escapeHtml(labelForKind(record.kind))}</span>${isRemix(record) ? "<span>remix</span>" : ""}${record.dance ? "<span>dance-oriented</span>" : ""}${readAnnotations()[record.id] ? "<span>local annotation</span>" : ""}</div><h3>${escapeHtml(record.title)}</h3><p>${escapeHtml(record.creator)} · ${record.year ?? "date unknown"} · ${escapeHtml(record.language)}</p></div>
+      <div class="record-source"><span>${escapeHtml(record.sourceStatus.replaceAll("-", " "))}</span><b>Open dossier →</b></div><span class="match-reason">${escapeHtml(matchReason(record, search.value))}</span>
     </button>`).join("") : `<div class="suite-empty suite-panel"><h3>No honest match yet.</h3><p>Remove a filter, import a passport, or annotate a record. The pilot will not invent an answer.</p></div>`
   byId("analytics-grid").innerHTML = [
     bars("Languages", distribution(visible, (item) => item.language), Math.max(visible.length, 1)),
@@ -138,6 +146,7 @@ const render = (): void => {
   ].join("")
   byId<HTMLButtonElement>("export-json").disabled = visible.length === 0
   byId<HTMLButtonElement>("export-csv").disabled = visible.length === 0
+  byId<HTMLButtonElement>("backup-passports").disabled = readCorpus().length === 0
 }
 
 const renderSourceRegister = (): void => {
@@ -154,6 +163,7 @@ const renderSourceRegister = (): void => {
 const openRecord = (record: AtlasRecord): void => {
   byId("record-detail").innerHTML = `
     <span class="suite-kicker">Source-visible dossier</span><h2>${escapeHtml(record.title)}</h2><p class="dialog-lede">${escapeHtml(record.summary)}</p>
+    ${record.archiveId ? `<a class="suite-button" href="../?passport=${encodeURIComponent(record.archiveId)}#create">Open parent passport →</a>` : ""}
     <div class="dossier-grid"><dl>
       <div><dt>Creator</dt><dd>${escapeHtml(record.creator)}</dd></div><div><dt>Date / place</dt><dd>${record.year ?? "Unknown"} · ${escapeHtml(record.place)}</dd></div>
       <div><dt>Language</dt><dd>${escapeHtml(record.language)}</dd></div><div><dt>Format</dt><dd>${escapeHtml(record.format)}</dd></div>
@@ -161,14 +171,14 @@ const openRecord = (record: AtlasRecord): void => {
     </dl><aside><span class="suite-chip ${record.confidence}">${confidenceLabel(record.confidence)}</span><h3>${escapeHtml(record.sourceStatus.replaceAll("-", " "))}</h3><p>${escapeHtml(record.rightsStatus)}</p>${record.evidenceUrl ? `<a class="suite-button primary" href="${escapeHtml(record.evidenceUrl)}" target="_blank" rel="noopener">${escapeHtml(record.evidenceLabel ?? "Open evidence")} ↗</a>` : ""}</aside></div>
     <div class="dossier-tags">${[...record.genres, ...record.themes].map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
     <form id="annotation-form" class="annotation-form"><span class="suite-kicker">Community-correctable local annotation</span><p>This layer stays in this browser and does not silently rewrite the source record.</p>
-      <div class="filter-grid"><label class="atlas-field">Type<select name="kind">${["song", "album", "dj-set", "mix", "recording", "derivative"].map((value) => `<option value="${value}" ${record.kind === value ? "selected" : ""}>${labelForKind(value)}</option>`).join("")}</select></label><label class="atlas-field">Confidence<select name="confidence">${["high", "medium", "recovery"].map((value) => `<option value="${value}" ${record.confidence === value ? "selected" : ""}>${confidenceLabel(value as Confidence)}</option>`).join("")}</select></label><label class="atlas-field">Genres<input name="genres" value="${escapeHtml(record.genres.join(", "))}"></label><label class="atlas-field">Themes<input name="themes" value="${escapeHtml(record.themes.join(", "))}"></label><label class="atlas-field">BPM<input name="bpm" type="number" min="1" max="300" value="${record.bpm ?? ""}"></label><label class="atlas-check"><input name="dance" type="checkbox" ${record.dance ? "checked" : ""}><span>Dance-oriented</span></label></div><button class="suite-button primary" type="submit">Save local annotation</button><output id="annotation-status"></output></form>`
+      <div class="filter-grid"><label class="atlas-field">Type<select name="kind">${["song", "album", "dj-set", "mix", "recording", "derivative"].map((value) => `<option value="${value}" ${record.kind === value ? "selected" : ""}>${labelForKind(value)}</option>`).join("")}</select></label><label class="atlas-field">Confidence<select name="confidence">${["high", "medium", "recovery"].map((value) => `<option value="${value}" ${record.confidence === value ? "selected" : ""}>${confidenceLabel(value as Confidence)}</option>`).join("")}</select></label><label class="atlas-field">Genres<input name="genres" value="${escapeHtml(record.genres.join(", "))}"></label><label class="atlas-field">Themes<input name="themes" value="${escapeHtml(record.themes.join(", "))}"></label><label class="atlas-field">BPM · only if measured<input name="bpm" type="number" min="1" max="300" value="${record.bpm ?? ""}"></label><label class="atlas-check"><input name="dance" type="checkbox" ${record.dance ? "checked" : ""}><span>Dance-oriented</span></label></div><div class="suite-actions"><button class="suite-button primary" type="submit">Save local annotation</button><button class="suite-button" type="button" id="reset-annotation">Restore source labels</button></div><output id="annotation-status" aria-live="polite"></output></form>`
   dialog.showModal()
   dialog.scrollTop = 0
   byId<HTMLFormElement>("annotation-form").addEventListener("submit", (event) => {
     event.preventDefault()
     const data = new FormData(event.currentTarget as HTMLFormElement)
     const bpm = Number(data.get("bpm"))
-    saveAnnotation(record.id, {
+    try { saveAnnotation(record.id, {
       kind: data.get("kind") as RecordKind,
       confidence: data.get("confidence") as Confidence,
       genres: String(data.get("genres") ?? "").split(",").map((item) => item.trim()).filter(Boolean),
@@ -177,7 +187,11 @@ const openRecord = (record: AtlasRecord): void => {
       dance: data.get("dance") === "on",
     })
     byId<HTMLOutputElement>("annotation-status").textContent = "Saved locally. Filters and analytics updated."
-    render()
+    fillOptions(); render()
+    } catch (error) { byId("annotation-status").textContent = error instanceof Error ? error.message : "The browser could not save this annotation." }
+  })
+  byId("reset-annotation").addEventListener("click", () => {
+    try { resetAnnotation(record.id); fillOptions(); render(); dialog.close() } catch { byId("annotation-status").textContent = "The browser could not restore the source labels." }
   })
 }
 
@@ -189,7 +203,7 @@ document.addEventListener("click", (event) => {
 })
 ;[search, language, year, kind, confidence, dance, reviewer].forEach((element) => element.addEventListener("input", render))
 document.querySelectorAll<HTMLElement>("[data-query]").forEach((button) => button.addEventListener("click", () => { search.value = button.dataset.query ?? ""; dance.checked = false; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) }))
-byId("quick-query").addEventListener("click", () => { search.value = "Belarusian dance remix"; dance.checked = false; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) })
+byId("quick-query").addEventListener("click", () => { search.value = "Belarusian dance works or remixes"; language.value = ""; year.value = ""; kind.value = ""; confidence.value = ""; reviewer.checked = true; dance.checked = false; render(); byId("explore").scrollIntoView({ behavior: "smooth" }) })
 byId("reset").addEventListener("click", () => { search.value = ""; language.value = ""; year.value = ""; kind.value = ""; confidence.value = ""; dance.checked = false; reviewer.checked = true; render() })
 byId("dialog-close").addEventListener("click", () => dialog.close())
 dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close() })
@@ -200,23 +214,25 @@ byId<HTMLInputElement>("passport-import").addEventListener("change", async (even
   const status = byId<HTMLOutputElement>("import-status")
   try {
     const count = importPassportJson(await file.text())
-    if (!count) throw new Error("No complete Archive Passport records were found in that file.")
     fillOptions(); render()
-    status.textContent = `${count} validated passport record${count === 1 ? "" : "s"} imported into this browser.`
+    status.textContent = count ? `${count} validated passport record${count === 1 ? "" : "s"} imported into this browser.` : "These identical passports are already saved here. No duplicates were added."
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "That file is not a valid Archive Passport JSON export."
   }
   input.value = ""
 })
-const exportRows = (): Record<string, unknown>[] => visible.map((item) => ({ ...item, exportScope: "visible Music Atlas result", exportedAt: new Date().toISOString() }))
+byId("import-trigger").addEventListener("click", () => byId<HTMLInputElement>("passport-import").click())
+byId("backup-passports").addEventListener("click", () => exportCorpusJson(readCorpus()))
+const exportRows = (): Record<string, unknown>[] => visible.map((item) => ({ ...item, query: search.value, localAnnotation: readAnnotations()[item.id], exportScope: "visible Music Atlas result — report, not a passport backup", exportedAt: new Date().toISOString() }))
 byId("export-json").addEventListener("click", () => downloadText(JSON.stringify(exportRows(), null, 2), "application/json", "unmute-belarus-atlas-result.json"))
 byId("export-csv").addEventListener("click", () => {
-  const cell = (value: unknown): string => `"${String(value ?? "").replaceAll('"', '""')}"`
   const header = ["id", "title", "creator", "year", "language", "kind", "relationship", "genres", "themes", "dance", "confidence", "source_status", "evidence_url"]
   const rows = visible.map((item) => [item.id, item.title, item.creator, item.year, item.language, item.kind, item.relationship, item.genres.join("; "), item.themes.join("; "), item.dance, item.confidence, item.sourceStatus, item.evidenceUrl])
-  downloadText([header, ...rows].map((row) => row.map(cell).join(",")).join("\n"), "text/csv;charset=utf-8", "unmute-belarus-atlas-result.csv")
+  downloadText([header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", "unmute-belarus-atlas-result.csv")
 })
 
 fillOptions()
+mountCorpusWarning()
+search.value = new URLSearchParams(window.location.search).get("q") ?? ""
 renderSourceRegister()
 render()

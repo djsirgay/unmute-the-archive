@@ -1,0 +1,5 @@
+.storage-warning{margin-block:24px;padding:22px!important;border:2px solid #dfad62;border-radius:14px;color:#fff3d9!important;background:#372b16!important;box-sizing:border-box}
+.storage-warning h2{margin:0 0 10px;font:700 20px/1.3 "Manrope",sans-serif!important;letter-spacing:normal!important;color:#fff3d9!important}
+.storage-warning p{max-width:88ch;margin:0;font:400 15px/1.6 "Manrope",sans-serif!important;color:#eadfc9!important}
+.storage-warning button{display:inline-flex;align-items:center;min-height:44px;margin-top:16px;padding:11px 16px;border:1px solid #dfad62;border-radius:8px;color:#251d0e!important;background:#ffe2a4!important;font:700 14px/1.4 "Manrope",sans-serif!important;cursor:pointer}
+.storage-warning button:focus-visible{outline:3px solid white;outline-offset:3px}

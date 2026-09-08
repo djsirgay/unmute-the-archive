@@ -22,6 +22,9 @@ import {
   type ArchiveManifest,
 } from "./manifest"
 import { pilotItems } from "./pilot"
+import { importPassportJson } from "./suite-data"
+import { isPublicEvidenceUrl } from "./manifest"
+import { mountCorpusWarning } from "./storage-warning"
 import "./style.css"
 
 const clientId = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID?.trim() ?? ""
@@ -71,11 +74,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <section class="hero shell">
       <div class="hero-copy">
         <p class="eyebrow">Live module · Unmute Belarus research system</p>
-        <h1>Prove a recording’s story. Preserve its future.</h1>
+        <h1>Document a recording’s story. Preserve its future.</h1>
         <p class="lede">Create a human-readable archival passport, document edited copies without replacing the master, verify exact files, and export a structured research corpus. The core workflow stays on this device.</p>
         <div class="hero-actions">
           <a class="button primary" href="#create">Start a passport</a>
-          <a class="button outline" href="#guide">Read the 3-minute guide</a>
+          <button class="button outline" id="quick-demo" type="button">Try a complete safe demo</button>
         </div>
         <p class="privacy-note"><span aria-hidden="true">⌾</span> Audio stays on this device unless you explicitly transfer it.</p>
       </div>
@@ -313,9 +316,12 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <div class="export-actions">
           <button class="button quiet" id="export-json" type="button">Export JSON</button>
           <button class="button quiet" id="export-csv" type="button">Export CSV</button>
+          <button class="button quiet" id="import-corpus-button" type="button">Import JSON backup</button>
+          <input id="import-corpus" type="file" accept="application/json,.json" hidden />
         </div>
       </div>
       <div class="stats-grid" id="corpus-stats"></div>
+      <p id="import-corpus-status" class="form-message" role="status"></p>
       <div class="corpus-list panel" id="corpus-list"></div>
     </section>
 
@@ -368,7 +374,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
 
   <nav class="module-sequence shell" aria-label="Previous and next research modules">
     <a href="/research/system/"><small>← Back</small><strong>Unmute Belarus system map</strong></a>
-    <a href="/research/system/#atlas"><small>Next module →</small><strong>02 · Music Atlas</strong></a>
+    <a href="./atlas/"><small>Next module →</small><strong>02 · Music Atlas</strong></a>
   </nav>
 
   <footer class="footer shell">
@@ -377,6 +383,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   </footer>
 `
 
+// The shared language layer translates option labels. Keep stored values stable.
+document.querySelectorAll<HTMLOptionElement>("option:not([value])").forEach((option) => { option.value = option.textContent ?? "" })
 const form = document.querySelector<HTMLFormElement>("#passport-form")!
 const sourceModes = [...document.querySelectorAll<HTMLInputElement>('input[name="source-mode"]')]
 const fileInput = document.querySelector<HTMLInputElement>("#audio-file")!
@@ -438,8 +446,8 @@ const selectedRightsBasis = (): string => {
   return `${rightsBasisSelect.value}${detail ? ` ${detail}` : ""}`
 }
 
-const fileWithinBrowserLimit = (file: File): boolean => file.size <= MAX_BROWSER_AUDIO_BYTES
-const fileLimitMessage = (file: File): string => `${file.name} is ${formatBytes(file.size)}. This browser pilot accepts files up to ${formatBytes(MAX_BROWSER_AUDIO_BYTES)} to avoid freezing or losing work; preserve the original and use a smaller access copy here.`
+const fileWithinBrowserLimit = (file: File): boolean => file.size > 0 && file.size <= MAX_BROWSER_AUDIO_BYTES
+const fileLimitMessage = (file: File): string => file.size === 0 ? `${file.name} is empty. Choose an audio file that contains data.` : `${file.name} is ${formatBytes(file.size)}. This browser pilot accepts files up to ${formatBytes(MAX_BROWSER_AUDIO_BYTES)} to avoid freezing or losing work; preserve the original and use a smaller access copy here.`
 
 const syncConditionalSelect = (select: HTMLSelectElement, other: HTMLInputElement): void => {
   const needsOther = select.value === "other"
@@ -476,7 +484,7 @@ const validatePassportForm = (): boolean => {
   if (rightsBasisSelect.value === "other") requireValue(getTextArea("#rights"), "rights explanation")
 
   const evidenceUrl = getInput("#evidence-url")
-  if (evidenceUrl.value && !evidenceUrl.validity.valid) {
+  if (evidenceUrl.value && !isPublicEvidenceUrl(evidenceUrl.value)) {
     missing.push("a complete evidence URL beginning with http:// or https://")
     invalidControls.push(evidenceUrl)
   }
@@ -540,13 +548,15 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
       <button class="button quiet" id="download-passport" type="button">Download JSON</button>
       <button class="button quiet" id="copy-citation" type="button">Copy citation</button>
     </div>
+    <div class="receipt-actions module-next-actions"><a class="button quiet" href="./atlas/">Find it in Music Atlas →</a>${manifest.source ? `<a class="button quiet" href="./restoration/?passport=${encodeURIComponent(manifest.archiveId)}#lab">Create an access copy →</a>` : ""}</div>
     <button class="text-button delete-local" id="delete-passport" type="button">Delete this local record</button>
     <p class="receipt-foot">Saved only in this browser. Export it to create a real backup.</p>
   `
   document.querySelector<HTMLButtonElement>("#download-passport")!.addEventListener("click", () => downloadManifest(manifest))
   document.querySelector<HTMLButtonElement>("#copy-citation")!.addEventListener("click", async (event) => {
-    await navigator.clipboard.writeText(citationFor(manifest))
-    ;(event.currentTarget as HTMLButtonElement).textContent = "Citation copied"
+    const button = event.currentTarget as HTMLButtonElement
+    try { await navigator.clipboard.writeText(citationFor(manifest)); button.textContent = "Citation copied" }
+    catch { button.textContent = "Select and copy the citation above" }
   })
   document.querySelector<HTMLButtonElement>("#delete-passport")!.addEventListener("click", () => {
     const confirmed = window.confirm(`Delete “${manifest.title}” from this browser? Export the JSON first if you need a backup.`)
@@ -600,12 +610,17 @@ const renderCorpus = (): void => {
   })
 
   const fingerprinted = corpus.filter((item) => item.source)
+  const selectedVerify = verifyPassport.value
+  const selectedDerivative = derivativePassport.value
   verifyPassport.innerHTML = fingerprinted.length
     ? `<option value="">Choose a local passport</option>${fingerprinted.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} — ${escapeHtml(shortFingerprint(item))}</option>`).join("")}`
     : '<option value="">No fingerprinted passports yet</option>'
   derivativePassport.innerHTML = fingerprinted.length
     ? `<option value="">Choose a fingerprinted source master</option>${fingerprinted.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} — ${escapeHtml(shortFingerprint(item))}</option>`).join("")}`
     : '<option value="">No fingerprinted passports yet</option>'
+  verifyPassport.value = selectedVerify; derivativePassport.value = selectedDerivative
+  getInput("#export-json").disabled = corpus.length === 0
+  getInput("#export-csv").disabled = corpus.length === 0
 }
 
 const setSelectedFile = (file: File): boolean => {
@@ -655,6 +670,10 @@ document.querySelector<HTMLButtonElement>("#load-demo")!.addEventListener("click
   getInput("#title").value = "Safe synthetic archive demo"
   getInput("#creator").value = "Unmute the Archive"
   languageSelect.value = "Instrumental / no linguistic content"
+  syncConditionalSelect(languageSelect, languageOther)
+  collectionSelect.value = "Unassigned research record"
+  syncConditionalSelect(collectionSelect, collectionOther)
+  getInput("#evidence-url").value = ""
   getInput("#place").value = "Generated locally in the browser"
   getInput("#recorded-on").value = localIsoDate()
   getTextArea("#context").value = "A four-second rights-clear synthetic clip that demonstrates passport creation, fingerprinting, corpus storage, export, and later verification."
@@ -664,6 +683,11 @@ document.querySelector<HTMLButtonElement>("#load-demo")!.addEventListener("click
   clearValidationState()
   formMessage.textContent = "Safe demo loaded. Select “Create passport → see result” to generate it now."
   form.scrollIntoView({ behavior: "smooth", block: "start" })
+})
+
+document.querySelector<HTMLButtonElement>("#quick-demo")!.addEventListener("click", () => {
+  document.querySelector<HTMLButtonElement>("#load-demo")!.click()
+  form.requestSubmit()
 })
 
 form.addEventListener("submit", async (event) => {
@@ -794,6 +818,9 @@ receiptFile.addEventListener("change", async () => {
     verifyButton.disabled = !verificationFile
     verifyResult.hidden = true
   } catch (error) {
+    verificationTarget = null
+    verifyButton.disabled = true
+    verifyResult.hidden = true
     verifyTargetNote.textContent = error instanceof Error ? error.message : "Receipt could not be read."
   }
 })
@@ -818,6 +845,8 @@ document.querySelector<HTMLButtonElement>("#verify-demo")!.addEventListener("cli
     verifyPassport.value = demoPassport.archiveId
     verifyTargetNote.textContent = `Comparing against “${demoPassport.title}” · ${shortFingerprint(demoPassport)}`
   } else {
+    verificationTarget = null
+    verifyPassport.value = ""
     verifyTargetNote.textContent = "Create the safe demo passport in Step 01 first; then this file can prove the match."
   }
   verifyButton.disabled = !(verificationTarget?.source && verificationFile)
@@ -826,20 +855,23 @@ document.querySelector<HTMLButtonElement>("#verify-demo")!.addEventListener("cli
 
 verifyButton.addEventListener("click", async () => {
   if (!verificationTarget?.source || !verificationFile) return
+  const target = structuredClone(verificationTarget)
+  const checkedFile = verificationFile
   verifyButton.disabled = true
   verifyButton.textContent = "Comparing every byte…"
   try {
-    const digest = await sha256(verificationFile)
-    const matches = digest === verificationTarget.source.sha256
+    const digest = await sha256(checkedFile)
+    const matches = digest === target.source!.sha256
     verifyResult.hidden = false
     verifyResult.className = `verify-result ${matches ? "match" : "mismatch"}`
     verifyResult.innerHTML = matches
       ? `<strong>Exact match.</strong><p>This file is byte-for-byte identical to the source in the passport.</p><code>${escapeHtml(digest)}</code>`
-      : `<strong>Not the same file.</strong><p>The bytes differ. This may be an edit, re-export, transcoding, or another recording.</p><code>Expected ${escapeHtml(verificationTarget.source.sha256)}<br />Found ${escapeHtml(digest)}</code>`
+      : `<strong>Not the same file.</strong><p>The bytes differ. This may be an edit, re-export, transcoding, or another recording.</p><code>Expected ${escapeHtml(target.source!.sha256)}<br />Found ${escapeHtml(digest)}</code>`
 
-    if (matches && corpus.some((item) => item.archiveId === verificationTarget!.archiveId)) {
-      verificationTarget.events.push({ type: "verified", at: new Date().toISOString(), note: `Matched ${verificationFile.name}` })
-      corpus = updateInCorpus(verificationTarget)
+    const localTarget = readCorpus().find((item) => item.archiveId === target.archiveId && item.source?.sha256 === target.source!.sha256)
+    if (matches && localTarget) {
+      localTarget.events.push({ type: "verified", at: new Date().toISOString(), note: `Matched ${checkedFile.name}` })
+      corpus = updateInCorpus(localTarget)
       renderCorpus()
     }
   } catch {
@@ -854,6 +886,19 @@ verifyButton.addEventListener("click", async () => {
 
 document.querySelector<HTMLButtonElement>("#export-json")!.addEventListener("click", () => exportCorpusJson(corpus))
 document.querySelector<HTMLButtonElement>("#export-csv")!.addEventListener("click", () => exportCorpusCsv(corpus))
+getInput("#import-corpus-button").addEventListener("click", () => getInput("#import-corpus").click())
+getInput("#import-corpus").addEventListener("change", async (event) => {
+  const input = event.currentTarget as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  const status = document.querySelector<HTMLElement>("#import-corpus-status")!
+  try {
+    const count = importPassportJson(await file.text())
+    corpus = readCorpus(); renderCorpus()
+    status.textContent = count ? `${count} passport(s) imported. Choose a receipt below to inspect it.` : "These passports are already saved. No duplicates were added."
+  } catch (error) { status.textContent = error instanceof Error ? error.message : "The backup could not be imported." }
+  input.value = ""
+})
 
 const initAudiotool = async (): Promise<void> => {
   if (!clientId) {
@@ -927,5 +972,10 @@ transferButton.addEventListener("click", async () => {
 })
 
 syncSourceMode()
+mountCorpusWarning()
 renderCorpus()
+window.addEventListener("storage", () => { corpus = readCorpus(); renderCorpus() })
+const requestedPassport = new URLSearchParams(window.location.search).get("passport")
+const requestedManifest = corpus.find((item) => item.archiveId === requestedPassport)
+if (requestedManifest) { currentManifest = requestedManifest; renderReceipt(requestedManifest) }
 void initAudiotool()

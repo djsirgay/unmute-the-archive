@@ -2,21 +2,51 @@ import { citationFor, isArchiveManifest, type ArchiveManifest } from "./manifest
 
 const STORAGE_KEY = "unmute-the-archive/corpus/v2"
 
+export type CorpusStorageIssue = { kind: "unavailable" | "damaged"; message: string; raw?: string }
+
+export const corpusStorageIssue = (): CorpusStorageIssue | undefined => {
+  let raw: string | null
+  try { raw = localStorage.getItem(STORAGE_KEY) } catch {
+    return { kind: "unavailable", message: "Browser storage is unavailable. Your saved library cannot be read or updated here. Allow site storage or return to the browser where you created it; do not clear site data." }
+  }
+  if (raw === null) return undefined
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.every(isArchiveManifest)) return undefined
+  } catch { /* Keep the original bytes available for recovery. */ }
+  return { kind: "damaged", raw, message: "Your saved library needs recovery. Some stored data could not be read, so an empty list below does not mean your records are gone. Download the original data before troubleshooting. Nothing has been deleted or replaced." }
+}
+
+const storedCorpus = (): ArchiveManifest[] => {
+  const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]")
+  if (!Array.isArray(parsed) || !parsed.every(isArchiveManifest)) {
+    throw new Error("The saved corpus needs recovery. Export the existing browser data before replacing it.")
+  }
+  return parsed
+}
+
+export const writeCorpus = (corpus: ArchiveManifest[]): ArchiveManifest[] => {
+  // Do not silently replace an unreadable collection with a new, smaller one.
+  storedCorpus()
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(corpus)) } catch {
+    throw new Error("This browser could not save the records. Check storage availability and keep your original JSON backup.")
+  }
+  return corpus
+}
+
 export const readCorpus = (): ArchiveManifest[] => {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter(isArchiveManifest)
+    return storedCorpus()
   } catch {
     return []
   }
 }
 
 export const saveToCorpus = (manifest: ArchiveManifest): ArchiveManifest[] => {
-  const corpus = readCorpus()
+  if (!isArchiveManifest(manifest)) throw new Error("This passport is incomplete and was not saved.")
+  const corpus = storedCorpus()
   const next = [manifest, ...corpus.filter((item) => item.archiveId !== manifest.archiveId)]
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  return next
+  return writeCorpus(next)
 }
 
 export const updateInCorpus = (manifest: ArchiveManifest): ArchiveManifest[] => {
@@ -25,9 +55,8 @@ export const updateInCorpus = (manifest: ArchiveManifest): ArchiveManifest[] => 
 }
 
 export const removeFromCorpus = (archiveId: string): ArchiveManifest[] => {
-  const next = readCorpus().filter((item) => item.archiveId !== archiveId)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  return next
+  const next = storedCorpus().filter((item) => item.archiveId !== archiveId)
+  return writeCorpus(next)
 }
 
 export const corpusStats = (corpus: ArchiveManifest[]) => {
@@ -47,7 +76,10 @@ export const corpusStats = (corpus: ArchiveManifest[]) => {
   }
 }
 
-const csvCell = (value: string | number): string => `"${String(value).replaceAll('"', '""')}"`
+export const csvCell = (value: unknown): string => {
+  const text = String(value ?? "")
+  return `"${(/^[=+@\-\t\r]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`
+}
 
 export const corpusAsCsv = (corpus: ArchiveManifest[]): string => {
   const header = [

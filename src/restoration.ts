@@ -2,7 +2,9 @@ import "./suite.css"
 import { analyzeAudio, audioBufferToWav, decodeFile, drawWaveform, processAudio, type AudioMetrics, type ProcessSettings } from "./audio-utils"
 import { readCorpus, saveToCorpus, updateInCorpus } from "./corpus"
 import { makeDemoClip } from "./demo-audio"
-import { addDerivative, buildManifest, formatBytes, MAX_BROWSER_AUDIO_BYTES, sha256, type ArchiveManifest } from "./manifest"
+import { buildManifest, formatBytes, MAX_BROWSER_AUDIO_BYTES, sha256, type ArchiveManifest } from "./manifest"
+import { registerCompletedRun, settingsText, type CompletedRun } from "./restoration-run"
+import { mountCorpusWarning } from "./storage-warning"
 import { downloadText } from "./suite-data"
 import { escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 
@@ -20,16 +22,17 @@ app.innerHTML = `${suiteHeader("restoration")}
   <section class="lab-shell shell" id="lab">
     <aside class="lab-controls suite-panel">
       <div><span class="suite-kicker">Source + passport</span><h2>1. Link the master</h2></div>
-      <label class="atlas-field">Fingerprint-verified passport<select id="passport"><option value="">Choose a local passport</option></select></label>
+      <label class="atlas-field">Source passport<select id="passport"><option value="">Choose a local passport</option></select></label><a class="atlas-note" href="../#create">No passport yet? Create or import one →</a>
       <label class="drop-file" id="drop-file"><input id="audio-file" type="file" accept="audio/*"><strong>Select the exact source audio</strong><span>WAV, MP3, M4A, OGG supported when the browser can decode it · limit ${formatBytes(MAX_BROWSER_AUDIO_BYTES)}</span></label>
       <div class="source-check" id="source-check"><span>Waiting for a file and passport.</span></div>
       <hr>
       <div><span class="suite-kicker">Transparent processing</span><h2>2. Set the intervention</h2></div>
       <div class="preset-row"><button data-preset="gentle">Gentle cleanup</button><button data-preset="speech">Speech / archive</button><button data-preset="flat">Reset</button></div>
-      <label class="range-field"><span>Low rumble filter <output id="highpass-value">35 Hz</output></span><input id="highpass" type="range" min="10" max="180" value="35"></label>
-      <label class="range-field"><span>High-frequency limit <output id="lowpass-value">18,000 Hz</output></span><input id="lowpass" type="range" min="3000" max="20000" step="100" value="18000"></label>
+      <label class="range-field"><span>Low rumble filter <output id="highpass-value">35 Hz</output></span><input id="highpass" type="range" min="0" max="180" value="35"></label>
+      <label class="range-field"><span>High-frequency limit <output id="lowpass-value">18,000 Hz</output></span><input id="lowpass" type="range" min="0" max="20000" step="100" value="18000"></label>
       <label class="range-field"><span>Gain <output id="gain-value">0 dB</output></span><input id="gain" type="range" min="-12" max="12" step="0.5" value="0"></label>
       <label class="atlas-check"><input id="normalize" type="checkbox" checked><span>Peak-normalize derivative to 95%</span></label>
+      <p class="atlas-note">Normalization sets the final peak, so gain does not control final loudness while it is enabled. Downloads are 16-bit PCM WAV access copies.</p>
       <label class="atlas-field">Intervention purpose<input id="purpose" value="Access copy for research listening"></label>
       <label class="atlas-field">Reviewer note<textarea id="reviewer-note" rows="3" placeholder="What should a future listener know?"></textarea></label>
       <button class="suite-button primary process-button" id="process" disabled>Process documented derivative</button><output class="process-status" id="process-status" aria-live="polite"></output>
@@ -61,6 +64,9 @@ let resultHash = ""
 let sourceUrl = ""
 let resultUrl = ""
 let intervention: Record<string, unknown> | undefined
+let completedRun: CompletedRun | undefined
+let sourceVersion = 0
+let processing = false
 
 const manifests = (): ArchiveManifest[] => readCorpus().filter((item) => item.source)
 const selectedManifest = (): ArchiveManifest | undefined => manifests().find((item) => item.archiveId === passportSelect.value)
@@ -72,13 +78,16 @@ const refreshPassports = (selectId?: string): void => {
   if (selectId) passportSelect.value = selectId
 }
 const settings = (): ProcessSettings => ({ highpass: Number(byId<HTMLInputElement>("highpass").value), lowpass: Number(byId<HTMLInputElement>("lowpass").value), gainDb: Number(byId<HTMLInputElement>("gain").value), normalize: byId<HTMLInputElement>("normalize").checked })
-const settingsText = (value: ProcessSettings): string => `High-pass ${value.highpass} Hz; low-pass ${value.lowpass} Hz; gain ${value.gainDb >= 0 ? "+" : ""}${value.gainDb} dB; ${value.normalize ? "peak normalization to 95%" : "no normalization"}.`
 const revoke = (value: string): void => { if (value) URL.revokeObjectURL(value) }
 
 const resetResult = (): void => {
-  resultBuffer = undefined; resultBlob = undefined; resultHash = ""; intervention = undefined
+  resultBuffer = undefined; resultBlob = undefined; resultHash = ""; intervention = undefined; completedRun = undefined
   revoke(resultUrl); resultUrl = ""
   byId<HTMLAudioElement>("result-player").removeAttribute("src")
+  byId<HTMLAudioElement>("result-player").load()
+  const canvas = byId<HTMLCanvasElement>("result-wave")
+  canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height)
+  byId("register-status").textContent = ""
   byId("result-title").textContent = "Process to create an access copy"
   byId("result-badge").textContent = "pending"
   byId("result-metrics").innerHTML = ""
@@ -89,7 +98,7 @@ const resetResult = (): void => {
 const assessLink = (): void => {
   const manifest = selectedManifest()
   const exact = Boolean(sourceHash && manifest?.source?.sha256 === sourceHash)
-  processButton.disabled = !sourceBuffer
+  processButton.disabled = !sourceBuffer || processing
   registerButton.disabled = !resultBlob || !exact
   byId("source-badge").textContent = exact ? "exact master match" : sourceHash ? "not linked" : "not verified"
   byId("source-badge").className = `suite-chip ${exact ? "high" : "recovery"}`
@@ -100,7 +109,17 @@ const assessLink = (): void => {
 }
 
 const loadFile = async (file: File): Promise<void> => {
+  const version = ++sourceVersion
   resetResult()
+  sourceFile = undefined; sourceBuffer = undefined; sourceHash = ""
+  processButton.disabled = true
+  revoke(sourceUrl); sourceUrl = ""
+  byId<HTMLAudioElement>("source-player").removeAttribute("src")
+  byId<HTMLAudioElement>("source-player").load()
+  byId("source-metrics").innerHTML = ""
+  byId("source-badge").textContent = "not verified"
+  const canvas = byId<HTMLCanvasElement>("source-wave")
+  canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height)
   if (file.size > MAX_BROWSER_AUDIO_BYTES) {
     sourceFile = undefined; sourceBuffer = undefined; sourceHash = ""
     byId("source-title").textContent = "File not loaded"
@@ -113,6 +132,7 @@ const loadFile = async (file: File): Promise<void> => {
   byId("source-check").innerHTML = `<span>Decoding and fingerprinting locally…</span>`
   try {
     const [decoded, digest] = await Promise.all([decodeFile(file), sha256(file)])
+    if (version !== sourceVersion) return
     sourceBuffer = decoded; sourceHash = digest
     revoke(sourceUrl); sourceUrl = URL.createObjectURL(file)
     byId<HTMLAudioElement>("source-player").src = sourceUrl
@@ -120,6 +140,7 @@ const loadFile = async (file: File): Promise<void> => {
     drawWaveform(byId<HTMLCanvasElement>("source-wave"), decoded)
     assessLink()
   } catch {
+    if (version !== sourceVersion) return
     sourceBuffer = undefined; sourceHash = ""
     byId("source-check").innerHTML = `<strong>Browser could not decode this file.</strong><span>Try WAV, MP3, M4A, or OGG. The file has not left this device.</span>`
     processButton.disabled = true
@@ -138,34 +159,48 @@ const ensureDemoPassport = async (file: File): Promise<ArchiveManifest> => {
 }
 
 const runDemo = async (): Promise<void> => {
+  try {
   const file = makeDemoClip()
   const passport = await ensureDemoPassport(file)
   refreshPassports(passport.archiveId)
   await loadFile(file)
+  if (sourceBuffer) await process()
   byId("lab").scrollIntoView({ behavior: "smooth" })
+  } catch (error) { byId("process-status").textContent = error instanceof Error ? error.message : "The browser could not prepare the demo." }
 }
 
 const process = async (): Promise<void> => {
-  if (!sourceBuffer || !sourceFile) return
+  if (!sourceBuffer || !sourceFile || processing) return
+  const version = sourceVersion
+  const inputFile = sourceFile
+  const inputBuffer = sourceBuffer
+  const inputHash = sourceHash
+  const applied = { ...settings() }
+  const purpose = byId<HTMLInputElement>("purpose").value.trim() || "Research access copy"
+  const reviewerNote = byId<HTMLTextAreaElement>("reviewer-note").value.trim()
+  processing = true
+  resetResult()
   processButton.disabled = true; processButton.textContent = "Processing locally…"
   byId<HTMLOutputElement>("process-status").textContent = "Creating a separate access copy. The source file remains untouched."
   try {
-    const applied = settings()
-    resultBuffer = await processAudio(sourceBuffer, applied)
-    resultBlob = audioBufferToWav(resultBuffer)
-    resultHash = await sha256(resultBlob)
+    const processed = await processAudio(inputBuffer, applied)
+    const blob = audioBufferToWav(processed)
+    const digest = await sha256(blob)
+    if (version !== sourceVersion) return
+    resultBuffer = processed; resultBlob = blob; resultHash = digest
+    completedRun = { sourceHash: inputHash, settings: applied, purpose, reviewerNote, label: `${inputFile.name.replace(/\.[^.]+$/, "")} — access derivative`, source: { filename: `${inputFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, mediaType: blob.type, bytes: blob.size, sha256: digest } }
     revoke(resultUrl); resultUrl = URL.createObjectURL(resultBlob)
     byId<HTMLAudioElement>("result-player").src = resultUrl
     drawWaveform(byId<HTMLCanvasElement>("result-wave"), resultBuffer, "#ff9c7e")
-    const sourceMetrics = analyzeAudio(sourceBuffer)
+    const sourceMetrics = analyzeAudio(inputBuffer)
     const resultMetrics = analyzeAudio(resultBuffer)
     byId("result-title").textContent = `${sourceFile.name.replace(/\.[^.]+$/, "")} — access derivative`
     byId("result-badge").textContent = "new fingerprint"
     byId("result-badge").className = "suite-chip high"
     byId("result-metrics").innerHTML = metricHtml(resultMetrics)
     intervention = {
-      schema: "unmute-restoration/1.0", createdAt: new Date().toISOString(), parentArchiveId: selectedManifest()?.archiveId ?? null,
-      purpose: byId<HTMLInputElement>("purpose").value.trim(), reviewerNote: byId<HTMLTextAreaElement>("reviewer-note").value.trim(),
+      schema: "unmute-restoration/1.0", createdAt: new Date().toISOString(), parentArchiveId: selectedManifest()?.source?.sha256 === inputHash ? selectedManifest()?.archiveId : null,
+      purpose, reviewerNote,
       source: { filename: sourceFile.name, bytes: sourceFile.size, sha256: sourceHash, metrics: sourceMetrics },
       derivative: { filename: `${sourceFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, bytes: resultBlob.size, mediaType: resultBlob.type, sha256: resultHash, metrics: resultMetrics },
       processing: { engine: "Web Audio API / transparent browser signal chain", ...applied, summary: settingsText(applied) },
@@ -175,36 +210,47 @@ const process = async (): Promise<void> => {
     wavButton.disabled = false; logButton.disabled = false; assessLink()
     byId<HTMLOutputElement>("process-status").textContent = "Derivative created locally. Review the log before downloading or registering it."
     byId("report-panel").scrollIntoView({ behavior: "smooth", block: "center" })
-  } catch {
+  } catch (error) {
+    if (version !== sourceVersion) return
     resetResult()
-    byId<HTMLOutputElement>("process-status").textContent = "Processing could not finish. Nothing was registered or uploaded; try a smaller WAV/MP3 file or reset the processing settings."
-  } finally { processButton.disabled = false; processButton.textContent = "Process documented derivative" }
+    byId<HTMLOutputElement>("process-status").textContent = error instanceof Error ? error.message : "Processing could not finish. Try a smaller WAV/MP3 file or reset the processing settings."
+  } finally { processing = false; processButton.disabled = !sourceBuffer; processButton.textContent = "Process documented derivative" }
 }
 
 audioInput.addEventListener("change", async (event) => { const file = (event.currentTarget as HTMLInputElement).files?.[0]; if (file) await loadFile(file) })
-passportSelect.addEventListener("change", assessLink)
+passportSelect.addEventListener("change", () => {
+  assessLink()
+  if (intervention) intervention.parentArchiveId = selectedManifest()?.source?.sha256 === sourceHash ? selectedManifest()?.archiveId : null
+})
 byId("load-demo").addEventListener("click", runDemo)
 document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((button) => button.addEventListener("click", () => {
   const preset = button.dataset.preset
-  const values = preset === "speech" ? [80, 12000, 1] : preset === "gentle" ? [35, 18000, 0] : [10, 20000, 0]
+  const values = preset === "speech" ? [80, 12000, 1] : preset === "gentle" ? [35, 18000, 0] : [0, 0, 0]
   byId<HTMLInputElement>("highpass").value = String(values[0]); byId<HTMLInputElement>("lowpass").value = String(values[1]); byId<HTMLInputElement>("gain").value = String(values[2])
   byId<HTMLInputElement>("normalize").checked = preset !== "flat"; document.querySelectorAll<HTMLInputElement>("input[type=range]").forEach((input) => input.dispatchEvent(new Event("input")))
 }))
-const ranges: [string, string, (value: number) => string][] = [["highpass", "highpass-value", (value) => `${value} Hz`], ["lowpass", "lowpass-value", (value) => `${value.toLocaleString()} Hz`], ["gain", "gain-value", (value) => `${value > 0 ? "+" : ""}${value} dB`]]
+const ranges: [string, string, (value: number) => string][] = [["highpass", "highpass-value", (value) => value ? `${value} Hz` : "Off"], ["lowpass", "lowpass-value", (value) => value ? `${value.toLocaleString()} Hz` : "Off"], ["gain", "gain-value", (value) => `${value > 0 ? "+" : ""}${value} dB`]]
 ranges.forEach(([inputId, outputId, format]) => byId<HTMLInputElement>(inputId).addEventListener("input", (event) => { byId<HTMLOutputElement>(outputId).textContent = format(Number((event.currentTarget as HTMLInputElement).value)) }))
+document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(".lab-controls input:not([type=file]), .lab-controls textarea").forEach((control) => control.addEventListener("input", () => {
+  if (completedRun) byId("process-status").textContent = "Settings changed. Process again to apply them; the existing audio and log still describe the previous run."
+}))
+const sourcePlayer = byId<HTMLAudioElement>("source-player")
+const resultPlayer = byId<HTMLAudioElement>("result-player")
+sourcePlayer.addEventListener("play", () => resultPlayer.pause())
+resultPlayer.addEventListener("play", () => sourcePlayer.pause())
 processButton.addEventListener("click", process)
 wavButton.addEventListener("click", () => { if (!resultBlob || !sourceFile) return; const link = document.createElement("a"); link.href = URL.createObjectURL(resultBlob); link.download = `${sourceFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`; link.click(); URL.revokeObjectURL(link.href) })
 logButton.addEventListener("click", () => { if (intervention) downloadText(JSON.stringify(intervention, null, 2), "application/json", "unmute-restoration-intervention.json") })
 registerButton.addEventListener("click", () => {
   const manifest = selectedManifest()
-  if (!manifest || !manifest.source || !resultBlob || !sourceFile || !intervention || manifest.source.sha256 !== sourceHash) return
+  if (!manifest || !resultBlob || !completedRun || !intervention) return
   try {
-    const applied = settings()
-    const updated = addDerivative(manifest, { label: `${sourceFile.name.replace(/\.[^.]+$/, "")} — access derivative`, purpose: byId<HTMLInputElement>("purpose").value.trim() || "Research access copy", method: "Web Audio API transparent browser signal chain.", changeLog: settingsText(applied), reviewerNote: byId<HTMLTextAreaElement>("reviewer-note").value.trim() || undefined, source: { filename: `${sourceFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, mediaType: resultBlob.type, bytes: resultBlob.size, sha256: resultHash } })
+    const updated = registerCompletedRun(manifest, completedRun)
     updateInCorpus(updated); refreshPassports(updated.archiveId); registerButton.disabled = true
     byId<HTMLOutputElement>("register-status").innerHTML = `Registered as a separate derivative. <a href="../#corpus">Open the parent passport</a> or <a href="../atlas/">see the new relationship in Music Atlas</a>.`
   } catch (error) { byId<HTMLOutputElement>("register-status").textContent = error instanceof Error ? error.message : "Registration failed." }
 })
 
-refreshPassports()
+refreshPassports(new URLSearchParams(window.location.search).get("passport") ?? undefined)
+mountCorpusWarning()
 assessLink()

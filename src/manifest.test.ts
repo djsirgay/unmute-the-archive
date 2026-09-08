@@ -24,7 +24,7 @@ describe("archival passports", () => {
 
     expect(manifest.schema).toBe("unmute-archive/2.1")
     expect(manifest.events.map((event) => event.type)).toEqual(["documented", "fingerprinted"])
-    expect(citationFor(manifest)).toContain("Fingerprint-verified local source")
+    expect(citationFor(manifest)).toContain("Source fingerprint recorded")
   })
 
   it("keeps missing-source records explicit and unfingerprinted", () => {

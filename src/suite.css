@@ -30,3 +30,15 @@
 @media(max-width:900px){.source-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.atlas-results-head{align-items:flex-start;flex-direction:column}.atlas-results-head .suite-actions{width:100%;grid-template-columns:1fr 1fr}.source-card{grid-template-columns:28px 1fr}.source-card b{grid-column:2}}
 .process-status{display:block;color:var(--suite-acid);font-size:11px;line-height:1.5}
+.query-explanation{margin:0 0 20px;padding:13px 16px;border-left:3px solid var(--suite-acid);color:#bcc9bf;background:var(--suite-panel);font-size:14px;line-height:1.6}
+.match-reason{grid-column:2 / -1;color:#b0c3b4;font-size:12px;line-height:1.5}
+.record-card h3,.wave-panel h2,.dossier-grid dd{overflow-wrap:anywhere}
+.atlas-field{font-size:11px;line-height:1.5}.atlas-note,.source-check,.process-status,.annotation-form p{font-size:13px;line-height:1.6}
+.record-card p{font-size:13px}.record-tags>span:not(.suite-chip),.suite-chip{font-size:10px}.suite-kicker{font-size:11px}
+.atlas-import-status{display:block;margin-top:12px;color:var(--suite-acid);font-size:13px;line-height:1.5}
+.import-button+.import-button{margin-top:8px}.dossier-grid dd{line-height:1.5}.lab-controls,.lab-output,.atlas-filters{min-width:0}
+.atlas-stats{grid-template-columns:repeat(5,minmax(0,1fr))}.atlas-stats div{padding:16px 12px}.atlas-stats span{font-size:10px;line-height:1.5}
+@media(max-width:1100px){.atlas-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.lab-shell{grid-template-columns:320px minmax(0,1fr)}}
+@media(max-width:900px){.lab-shell{grid-template-columns:1fr}.lab-controls{position:static}}
+@media(max-width:640px){.atlas-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.record-card{padding:18px 12px;gap:12px}.match-reason{grid-column:2}.wave-panel header{flex-wrap:wrap}.metric-row{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.suite-modules .shell{width:calc(100% - 24px);min-width:0;grid-template-columns:repeat(2,minmax(0,1fr));margin-inline:auto}.suite-modules a{grid-template-columns:28px minmax(0,1fr);padding:10px}.suite-primary>div{display:flex}.suite-primary>div a:not(:first-child){display:none}}

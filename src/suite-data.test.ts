@@ -3,8 +3,8 @@ import { importPassportJson, isDanceRemixQuery, matchesResearchQuery, researchRe
 
 describe("Music Atlas research queries", () => {
   it("treats dance works OR remixes as a category union", () => {
-    const result = reviewerRecords.filter((record) => matchesResearchQuery(record, "Belarusian dance remix"))
-    expect(result.length).toBeGreaterThanOrEqual(15)
+    const result = reviewerRecords.filter((record) => matchesResearchQuery(record, "Belarusian dance works or remixes"))
+    expect(result.length).toBe(14)
     expect(result.every((record) => record.language.toLowerCase().includes("belarusian"))).toBe(true)
     expect(result.every((record) => record.dance || ["mix", "dj-set", "derivative"].includes(record.kind) || record.relationship.includes("remix"))).toBe(true)
     expect(result.some((record) => !record.creator.includes("Ulyanov"))).toBe(true)
@@ -43,7 +43,7 @@ describe("Music Atlas research queries", () => {
     queries.forEach((query) => {
       const result = reviewerRecords.filter((record) => matchesResearchQuery(record, query))
       expect(isDanceRemixQuery(query)).toBe(true)
-      expect(result.length).toBeGreaterThanOrEqual(15)
+      expect(result.length).toBe(14)
       expect(result.some((record) => record.creator.includes("Šuma"))).toBe(true)
       expect(result.some((record) => record.creator.includes("Akute"))).toBe(true)
     })
@@ -87,6 +87,43 @@ describe("Music Atlas research queries", () => {
   })
 
   it("refuses an incomplete portable passport before it reaches browser storage", () => {
-    expect(importPassportJson(JSON.stringify({ schema: "unmute-archive/2.1", archiveId: "incomplete", title: "Unsafe" }))).toBe(0)
+    expect(() => importPassportJson(JSON.stringify({ schema: "unmute-archive/2.1", archiveId: "incomplete", title: "Unsafe" }))).toThrow("No records were imported")
+  })
+
+  it("requires BOTH dance and remix when the user does not ask for OR", () => {
+    const result = reviewerRecords.filter((record) => matchesResearchQuery(record, "танцевальные ремиксы на белорусском языке"))
+    expect(result).toHaveLength(3)
+    expect(result.every((record) => record.dance && record.relationship.includes("remix"))).toBe(true)
+  })
+
+  it("treats an ampersand as AND, not OR", () => {
+    const result = reviewerRecords.filter((record) => matchesResearchQuery(record, "Belarusian dance & remixes"))
+    expect(result).toHaveLength(3)
+    expect(result.every((record) => record.dance && record.relationship.includes("remix"))).toBe(true)
+  })
+
+  it("does not classify any derivative as a remix", () => {
+    const restoration = { ...reviewerRecords[0], kind: "derivative" as const, title: "Restored master", relationship: "documented restoration derivative", genres: [] }
+    expect(matchesResearchQuery(restoration, "remix")).toBe(false)
+  })
+
+  it("finds accented Latin and Belarusian artist names and year ranges", () => {
+    expect(reviewerRecords.filter((record) => matchesResearchQuery(record, "Шума рэміксы"))).toHaveLength(4)
+    expect(reviewerRecords.filter((record) => matchesResearchQuery(record, "Znicka remix"))).toHaveLength(3)
+    const result = reviewerRecords.filter((record) => matchesResearchQuery(record, "Belarusian remixes 2013–2014"))
+    expect(result).toHaveLength(5)
+  })
+
+  it("dates the three Iholki EP remixes to the cited 2012 Budzma report", () => {
+    const ids = ["public-akute-iholki-deech", "public-akute-iholki-pryzma", "public-akute-adzinotstva-dj-boston"]
+    const records = reviewerRecords.filter((record) => ids.includes(record.id))
+    expect(records).toHaveLength(3)
+    expect(records.every((record) => record.year === 2012 && record.summary.includes("October 25, 2012"))).toBe(true)
+  })
+
+  it("keeps an unverified vocal-language lead out of language results", () => {
+    const record = reviewerRecords.find((item) => item.id === "public-palina-ya-poymu-belyaev")!
+    expect(matchesResearchQuery(record, "Palina remix")).toBe(true)
+    expect(matchesResearchQuery(record, "Belarusian remix")).toBe(false)
   })
 })

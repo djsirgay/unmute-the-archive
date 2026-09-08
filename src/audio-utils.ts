@@ -46,10 +46,16 @@ export const processAudio = async (source: AudioBuffer, settings: ProcessSetting
   lowpass.Q.value = 0.707
   const gain = context.createGain()
   gain.gain.value = 10 ** (settings.gainDb / 20)
-  input.connect(highpass).connect(lowpass).connect(gain).connect(context.destination)
+  let tail: AudioNode = input
+  if (settings.highpass > 0) tail = tail.connect(highpass)
+  if (settings.lowpass > 0) tail = tail.connect(lowpass)
+  tail.connect(gain).connect(context.destination)
   input.start()
   const rendered = await context.startRendering()
-  if (!settings.normalize) return rendered
+  if (!settings.normalize) {
+    if (analyzeAudio(rendered).peak > 1) throw new Error("This gain would clip the exported WAV. Lower the gain or enable peak normalization, then process again.")
+    return rendered
+  }
   const metrics = analyzeAudio(rendered)
   return metrics.peak > 0 ? scaledCopy(rendered, 0.95 / metrics.peak) : rendered
 }
