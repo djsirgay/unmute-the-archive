@@ -18,7 +18,7 @@ Unmute the Archive creates a portable record before that handoff happens.
 4. **Verify a file later.** Re-select an audio file and compare it with a local or imported passport. An exact match means every byte is identical.
 5. **Build a local research corpus.** Passports are stored in the browser and can be exported as JSON for preservation or CSV for analysis.
 6. **Create a research citation.** Every passport includes a human-readable citation and a portable JSON receipt.
-7. **Search a source-visible Music Atlas.** The pilot combines five creator-documented records with 13 cited remix leads (one awaits vocal-language review). It supports structured filters, limited natural-language queries in English, Belarusian, and Russian, evidence dossiers, local corrections, a six-page source register, and JSON/CSV result reports. It searches the loaded corpus, not the web.
+7. **Search a source-visible Music Atlas.** Two explicitly separate scopes: live external Wikidata music/artist discovery (CC0 metadata), and five creator-documented records plus 13 cited remix leads / local passports. External discovery supports editable artist/title/context, source genre, era, format and documented work-language criteria; mood is recorded as an unapplied preference. The local corpus retains evidence dossiers, annotations, its six-page source register and JSON/CSV reports. Neither scope claims complete coverage of Belarusian music or global semantic/audio search.
 8. **Document reversible access copies.** Restoration Lab creates a separate listening derivative, preserves the fingerprinted master, and records every intervention and human review note.
 9. **Transfer to Audiotool optionally.** With an Audiotool developer client ID, a fingerprinted source can be uploaded as an unlisted sample and inserted into a selected session through Nexus. The transfer becomes another event in the same passport.
 
@@ -83,6 +83,24 @@ npm test
 ```
 
 The tests cover fingerprint stability, changed-file detection, explicit missing-source records, runtime validation of imported passports, citations, CSV export, multilingual Music Atlas queries, language-intent accuracy, ranking, and consistency between dance labels and filters.
+
+## External metadata discovery (September 2026)
+
+- Entry: `atlas/#external-discovery`. Prefill (without automatic requests): `atlas/?discover=Belarusian%20rock%201990s&lang=be#external-discovery`.
+- A user search retrieves two bounded, serial Wikidata SPARQL results: works (Belarusian language + performer, or a performer connected to Belarus by citizenship/country and MusicBrainz ID), and artists under the same explicit country criterion. The current page caches for 30 minutes. Refresh and retry are manual. Source statements, timestamp, source query and CC0 license travel with the result JSON.
+- Live Chrome QA on September 8 returned **620 distinct source records**, including 52 folk matches (26 works + 26 artist leads), 16 N.R.M. matches (15 works + 1 artist), and 3 electronic/1990s artist leads but no matching work-level records. These counts are observations, not hard-coded fixtures or completeness claims.
+- Artist nationality is never a work-language assertion. An album language does not prove the language of each recording. Artist genre is never inherited by a work. Artist genre and documented activity dates are separate facts; they do not establish that the artist performed that genre in the requested decade.
+- Description parsing is a documented finite EN/BE/RU vocabulary, not a hidden LLM. Unknown words remain editable text criteria. Mood is visibly not applied: genre metadata cannot establish mood, audio similarity, authenticity or listening suitability. Missing statements can cause missing results; the empty state suggests broadening without inventing matches.
+- No audio, lyrics, cover art, private passport or search description is uploaded. Only public structured metadata is fetched. There is no arbitrary crawl, paid API, model credential or backend. Third-party source availability is outside the static app's control; source errors cannot change the local passport corpus.
+- Raw Wikidata statements may be wrong or insufficiently sourced. Inspect each QID and its references before promoting metadata to an archival claim. Discovered records are not automatically imported as verified passports.
+
+Primary implementation references:
+
+- [Wikidata data access](https://www.wikidata.org/wiki/Wikidata:Data_access) and [CC0 licensing](https://www.wikidata.org/wiki/Wikidata:Licensing).
+- [Wikimedia API etiquette](https://www.mediawiki.org/wiki/API:Etiquette) and [cross-origin requests](https://www.mediawiki.org/wiki/API:Cross-site_requests): serial requests, page-level cache and the browser-safe `Api-User-Agent` header identify this project.
+- [MusicBrainz API](https://musicbrainz.org/doc/MusicBrainz_API), [rate/application identification rules](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting), [data licenses](https://musicbrainz.org/doc/About/Data_License). MusicBrainz URLs from CC0 Wikidata are source links only. Direct MusicBrainz browser querying is not enabled: reliable required User-Agent control needs a sanctioned backend, and supplementary tags carry a different NC-SA license. No MusicBrainz supplementary metadata is copied into external discovery.
+
+Future provider adapters can return the same `DiscoveryRecord` shape with explicit source/license/coverage. A larger licensed metadata index and review workflow are required for arbitrary descriptions, underdocumented diaspora artists, reliable mood/audio features, and comprehensive source discovery. This version supplies a real extensible retrieval layer, not an all-internet-search claim.
 
 ## Quick reviewer path
 

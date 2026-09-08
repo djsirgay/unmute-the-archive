@@ -18,6 +18,7 @@ import { languageGroup, queryExplanation, isRemix, matchReason } from "./researc
 import { csvCell, exportCorpusJson, readCorpus } from "./corpus"
 import { mountCorpusWarning } from "./storage-warning"
 import { confidenceLabel, escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
+import { mountDiscovery } from "./discovery-ui"
 
 const app = document.querySelector<HTMLDivElement>("#app")!
 
@@ -26,10 +27,12 @@ app.innerHTML = `${suiteHeader("atlas")}
   <section class="suite-hero shell atlas-hero">
     <p class="suite-eyebrow">02 · Searchable cultural context</p>
     <h1>Find the music.<br><em>Keep the evidence visible.</em></h1>
-    <p>Music Atlas turns archival passports and carefully labeled research leads into a searchable corpus. Ask a concrete question, inspect why each result matched, correct the metadata, and export the evidence behind your conclusion.</p>
-    <div class="suite-actions"><a class="suite-button primary" href="#explore">Explore the pilot corpus</a><button class="suite-button" id="quick-query">Show Belarusian dance works &amp; remixes</button></div>
-    <div class="suite-boundary"><strong>What you are seeing:</strong> ${reviewerRecords.length} transparent seed records: five creator-documented works and ${publicSourceRecords.length} source-cited remix leads, plus any passports stored in this browser. This is a functional pilot—not a claim that Tuzin.fm or the wider Belarusian archive has already been ingested.</div>
+    <p>Search for Belarus-related music by artist, style, era or description. Explore the live public catalog, then inspect our curated evidence and your local archival passports. These are distinct sources, with visible coverage and uncertainty.</p>
+    <div class="suite-actions"><a class="suite-button primary" href="#external-discovery">Search beyond the pilot</a><a class="suite-button" href="#explore">Explore the local corpus</a><button class="suite-button" id="quick-query">Try a local remix example</button></div>
+    <div class="suite-boundary"><strong>Two separate collections:</strong> live Wikidata discovery below, and a local corpus of ${reviewerRecords.length} seed records plus your saved passports. The local collection contains five creator-documented works and ${publicSourceRecords.length} source-cited remix leads. Neither collection claims that Tuzin.fm or the wider Belarusian archive has been fully ingested.</div>
   </section>
+
+  <section class="external-discovery shell" id="external-discovery"></section>
 
   <section class="atlas-workspace shell" id="explore">
     <aside class="atlas-filters suite-panel">
@@ -233,6 +236,7 @@ byId("export-csv").addEventListener("click", () => {
 
 fillOptions()
 mountCorpusWarning()
+mountDiscovery()
 search.value = new URLSearchParams(window.location.search).get("q") ?? ""
 renderSourceRegister()
 render()
