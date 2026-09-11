@@ -10,8 +10,6 @@ import {
   updateInCorpus,
 } from "./corpus"
 import {
-  addDerivative,
-  buildManifest,
   citationFor,
   downloadManifest,
   formatBytes,
@@ -25,6 +23,9 @@ import { pilotItems } from "./pilot"
 import { importPassportJson } from "./suite-data"
 import { isPublicEvidenceUrl } from "./manifest"
 import { mountCorpusWarning } from "./storage-warning"
+import { captureDerivativeSubmission, completeDerivativeSubmission, InterventionFormError, interventionReceipt, readInterventionFields, syncInterventionForm } from "./intervention-form"
+import { sameSha256 } from "./intervention"
+import { capturePassportSubmission, completePassportSubmission } from "./passport-submission"
 import "./style.css"
 
 const clientId = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID?.trim() ?? ""
@@ -39,6 +40,18 @@ const escapeHtml = (value: string): string => value.replace(/[&<>'"]/g, (charact
   "'": "&#39;",
   '"': "&quot;",
 })[character]!)
+
+const disclosureControl = (id: string, label: string, placeholder: string, multiline = false, statusId = `${id}-status`): string => `
+  <div class="intervention-disclosure">
+    <label for="${statusId}">${escapeHtml(label)}</label>
+    <div class="intervention-disclosure-controls">
+      <select id="${statusId}" aria-label="${escapeHtml(label)} disclosure">
+        <option value="unknown">Unknown</option><option value="provided">Provide details</option>
+        <option value="not-disclosed">Not disclosed</option><option value="not-applicable">Not applicable</option>
+      </select>
+      ${multiline ? `<textarea id="${id}" rows="3" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(label)} details" hidden disabled></textarea>` : `<input id="${id}" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(label)} details" hidden disabled />`}
+    </div>
+  </div>`
 
 document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
   <header class="site-header" id="top">
@@ -260,24 +273,65 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
             <li><strong>Listening judgment stays human.</strong><span>A cleaner waveform is not automatically a more authentic record.</span></li>
           </ul>
         </div>
-        <form class="derivative-form panel" id="derivative-form">
-          <label>Source master passport<select id="derivative-passport" required><option value="">No fingerprinted passports yet</option></select></label>
-          <label class="dropzone" for="derivative-file">
-            <input id="derivative-file" type="file" accept="audio/*" />
-            <span class="drop-icon" aria-hidden="true">↗</span>
-            <strong id="derivative-file-label">Choose the derived audio file</strong>
-            <small>The original master is never replaced.</small>
-          </label>
-          <div class="field-grid">
-            <label>Derivative label<input id="derivative-label" required placeholder="Restoration test A" /></label>
-            <label>Purpose<input id="derivative-purpose" required placeholder="Listening access / research comparison" /></label>
-          </div>
-          <label>Method and tools<textarea id="derivative-method" required rows="3" placeholder="Software, model, version, and settings if known."></textarea></label>
-          <label>Intervention log<textarea id="derivative-changes" required rows="3" placeholder="What was removed, repaired, separated, equalized, or otherwise changed?"></textarea></label>
-          <label>Human review note <span class="optional">optional</span><textarea id="derivative-review" rows="2" placeholder="What was preserved, and what artifacts or uncertainty remain?"></textarea></label>
-          <label class="check-row"><input id="derivative-master-check" type="checkbox" required /><span>I confirm that this file is a derivative and does not replace the preserved master.</span></label>
+        <form class="derivative-form panel intervention-form" id="derivative-form" novalidate>
+          <fieldset class="intervention-step">
+            <legend class="intervention-legend"><span class="intervention-step-number">1</span> Source master &amp; derived file</legend>
+            <div class="field-grid">
+              <label>Source master passport<select id="derivative-passport" required><option value="">No fingerprinted passports yet</option></select><small class="intervention-hint" id="intervention-source-note">Create or import a fingerprinted passport first. Selecting it declares which source this copy came from.</small></label>
+              <label class="dropzone" for="derivative-file">
+                <input id="derivative-file" type="file" accept="audio/*" />
+                <span class="drop-icon" aria-hidden="true">↗</span>
+                <strong id="derivative-file-label">Choose the derived audio file</strong>
+                <small>A separate version; the master is never replaced.</small>
+              </label>
+            </div>
+            <label>Derivative label<input id="derivative-label" required placeholder="Performance remix, classroom edit, or listening copy" /></label>
+            <label>Purpose / context<input id="derivative-purpose" required placeholder="What is this version for? Research, education, listening access…" /></label>
+          </fieldset>
+          <fieldset class="intervention-step">
+            <legend class="intervention-legend"><span class="intervention-step-number">2</span> Processing type &amp; details</legend>
+            <div class="field-grid">
+              <label>Processing type<select id="intervention-processing"><option value="unknown">Unknown / not established</option><option value="ai">AI-assisted processing</option><option value="non-ai">Non-AI processing</option></select></label>
+              ${disclosureControl("intervention-tool", "Tool name", "Software or service used")}
+            </div>
+            <details class="intervention-details">
+              <summary>Model, version &amp; settings — add known details</summary>
+              <p class="intervention-hint">These start as Unknown. Not disclosed means information is withheld. Model is Not applicable only for explicitly non-AI processing.</p>
+              <div class="field-grid">
+                ${disclosureControl("intervention-model", "Model", "Model name, if established")}
+                ${disclosureControl("intervention-version", "Tool version", "Exact version, if established")}
+              </div>
+              ${disclosureControl("intervention-settings", "Settings", "Parameters, configuration, or a processing preset", true)}
+            </details>
+            ${disclosureControl("derivative-method", "Processing instruction / method", "What was requested or done? Include the exact prompt when available.", true, "intervention-instruction-status")}
+            <label>Change log<textarea id="derivative-changes" required rows="3" placeholder="What changed? Describe removal, repair, separation, generated material, or what has not yet been assessed."></textarea></label>
+          </fieldset>
+          <fieldset class="intervention-step">
+            <legend class="intervention-legend"><span class="intervention-step-number">3</span> Permission scope</legend>
+            <div class="field-grid">
+              <label>Declared permission basis<select id="intervention-authority"><option value="unknown">Unknown / not established</option><option value="creator-owned">Creator-owned — declared</option><option value="permission">Permission obtained — declared</option><option value="public-domain">Public domain — declared</option><option value="no-permission">No permission</option></select></label>
+              <label>Evidence / reference <span class="optional">optional</span><textarea id="intervention-evidence" rows="2" placeholder="License, agreement, date, or a private reference. Do not include sensitive documents."></textarea></label>
+            </div>
+            <label>Scope and limits<textarea id="intervention-scope" required rows="2" placeholder="What use is covered? If unknown, say what still needs permission or review."></textarea></label>
+            <p class="intervention-notice">Unknown or No permission can be documented. Registration does not authorize processing, redistribution, or reuse, and the master's rights do not automatically cover this derivative.</p>
+          </fieldset>
+          <fieldset class="intervention-step">
+            <legend class="intervention-legend"><span class="intervention-step-number">4</span> Review status</legend>
+            <div class="field-grid">
+              <label>Declared human review<select id="intervention-review-status"><option value="pending">Pending — not reviewed</option><option value="reviewed">Reviewed — not automatically approved</option><option value="rejected">Rejected by reviewer</option></select></label>
+              <label>Reviewer / pseudonym<input id="intervention-reviewer" placeholder="Required for Reviewed or Rejected" /></label>
+            </div>
+            <p class="intervention-hint" id="intervention-review-help">Pending is the default. A name or note alone does not mark review complete.</p>
+            <div class="field-grid">
+              <label>Preserved features<textarea id="intervention-preserved" rows="2" placeholder="What stayed recognizable or unchanged? Leave blank if not assessed."></textarea></label>
+              <label>Uncertainty / limitations<textarea id="intervention-uncertainty" rows="2" placeholder="Artifacts, missing context, or unresolved questions. Leave blank if not assessed."></textarea></label>
+            </div>
+            <p class="intervention-hint">Blank preserved-features and uncertainty fields are saved explicitly as “Not assessed.” They never mean “no changes” or “no uncertainty.”</p>
+            <label>Human review note<textarea id="derivative-review" rows="3" placeholder="What did the reviewer compare and conclude? Required for Reviewed or Rejected."></textarea></label>
+            <label class="check-row"><input id="derivative-master-check" type="checkbox" required /><span>I confirm that this is a separate derivative and the original master remains preserved. This statement is not a certificate of authenticity or a rights grant.</span></label>
+          </fieldset>
           <button class="button primary full" id="derivative-button" type="submit">Register documented derivative</button>
-          <p class="form-message" id="derivative-message" role="status"></p>
+          <p class="form-message" id="derivative-message" role="status" aria-live="polite"></p>
         </form>
       </div>
     </section>
@@ -512,21 +566,22 @@ const validatePassportForm = (): boolean => {
   return false
 }
 
-const renderReceipt = (manifest: ArchiveManifest): void => {
+const showUnavailableReceipt = (): void => {
+  currentManifest = null
+  transferButton.disabled = true
+  liveReceipt.innerHTML = `<div class="empty-receipt"><p class="eyebrow">Local record unavailable</p><h3>This passport is no longer available in this browser.</h3><p>No record was recreated or exported. Choose a currently saved passport below, or restore your JSON backup.</p><a href="#corpus">Choose a saved passport →</a></div>`
+}
+
+const renderReceipt = (manifest: ArchiveManifest, highlightedDerivativeId?: string): void => {
   const sourceLine = manifest.source
     ? `${escapeHtml(manifest.source.filename)} · ${formatBytes(manifest.source.bytes)}`
     : "Original source missing · recovery record only"
   const statusLabel = manifest.status === "fingerprinted" ? "Fingerprint created" : "Recovery lead"
   const derivativeRows = (manifest.derivatives ?? []).map((derivative) => `
     <li>
-      <details>
+      <details class="intervention-saved-detail" data-derivative-id="${escapeHtml(derivative.derivativeId)}" ${derivative.derivativeId === highlightedDerivativeId ? "open" : ""}>
         <summary><strong>${escapeHtml(derivative.label)}</strong><span>${escapeHtml(derivative.purpose)} · ${escapeHtml(derivative.source.filename)}</span></summary>
-        <dl>
-          <div><dt>Method</dt><dd>${escapeHtml(derivative.method)}</dd></div>
-          <div><dt>Intervention log</dt><dd>${escapeHtml(derivative.changeLog)}</dd></div>
-          ${derivative.reviewerNote ? `<div><dt>Human review</dt><dd>${escapeHtml(derivative.reviewerNote)}</dd></div>` : ""}
-          <div><dt>Derivative fingerprint</dt><dd class="mono">${escapeHtml(`${derivative.source.sha256.slice(0, 12)}…${derivative.source.sha256.slice(-12)}`)}</dd></div>
-        </dl>
+        ${interventionReceipt(derivative)}
       </details>
     </li>
   `).join("")
@@ -540,6 +595,9 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
       <div><dt>Language / place</dt><dd>${escapeHtml(manifest.language)} · ${escapeHtml(manifest.place)}</dd></div>
       <div><dt>Recorded / released</dt><dd>${escapeHtml(manifest.recordedOn || "Not yet established")}</dd></div>
       <div><dt>Source</dt><dd>${sourceLine}</dd></div>
+      <div class="full-row"><dt>Cultural context</dt><dd>${escapeHtml(manifest.context)}</dd></div>
+      <div class="full-row"><dt>Source rights / consent declaration</dt><dd>${escapeHtml(manifest.rightsBasis)}</dd></div>
+      <div class="full-row"><dt>Evidence / recovery lead</dt><dd>${manifest.evidenceUrl && isPublicEvidenceUrl(manifest.evidenceUrl) ? `<a href="${escapeHtml(manifest.evidenceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(manifest.evidenceUrl)}</a>` : "Not recorded"}</dd></div>
       <div class="full-row"><dt>Integrity fingerprint</dt><dd class="mono">${escapeHtml(shortFingerprint(manifest))}</dd></div>
     </dl>
     <div class="citation-box"><span>Research citation</span><p>${escapeHtml(citationFor(manifest))}</p></div>
@@ -552,10 +610,19 @@ const renderReceipt = (manifest: ArchiveManifest): void => {
     <button class="text-button delete-local" id="delete-passport" type="button">Delete this local record</button>
     <p class="receipt-foot">Saved only in this browser. Export it to create a real backup.</p>
   `
-  document.querySelector<HTMLButtonElement>("#download-passport")!.addEventListener("click", () => downloadManifest(manifest))
+  liveReceipt.tabIndex = -1
+  document.querySelector<HTMLButtonElement>("#download-passport")!.addEventListener("click", () => {
+    const latest = readCorpus().find((item) => item.archiveId === manifest.archiveId)
+    if (!latest) { showUnavailableReceipt(); return }
+    currentManifest = latest
+    renderReceipt(latest, highlightedDerivativeId)
+    downloadManifest(latest)
+  })
   document.querySelector<HTMLButtonElement>("#copy-citation")!.addEventListener("click", async (event) => {
     const button = event.currentTarget as HTMLButtonElement
-    try { await navigator.clipboard.writeText(citationFor(manifest)); button.textContent = "Citation copied" }
+    const latest = readCorpus().find((item) => item.archiveId === manifest.archiveId)
+    if (!latest) { showUnavailableReceipt(); return }
+    try { await navigator.clipboard.writeText(citationFor(latest)); button.textContent = "Citation copied" }
     catch { button.textContent = "Select and copy the citation above" }
   })
   document.querySelector<HTMLButtonElement>("#delete-passport")!.addEventListener("click", () => {
@@ -619,8 +686,25 @@ const renderCorpus = (): void => {
     ? `<option value="">Choose a fingerprinted source master</option>${fingerprinted.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} — ${escapeHtml(shortFingerprint(item))}</option>`).join("")}`
     : '<option value="">No fingerprinted passports yet</option>'
   verifyPassport.value = selectedVerify; derivativePassport.value = selectedDerivative
+  const selectedMaster = corpus.find((item) => item.archiveId === selectedDerivative)
+  document.querySelector<HTMLElement>("#intervention-source-note")!.textContent = selectedMaster?.source
+    ? `Declared source: ${selectedMaster.source.filename} · SHA-256 ${shortFingerprint(selectedMaster)}. This link does not prove how an external tool processed the file.`
+    : "Create or import a fingerprinted passport first. Selecting it declares which source this copy came from."
   getInput("#export-json").disabled = corpus.length === 0
   getInput("#export-csv").disabled = corpus.length === 0
+}
+
+const refreshActiveReceipt = (): void => {
+  if (!currentManifest) return
+  const latest = corpus.find((item) => item.archiveId === currentManifest!.archiveId)
+  if (!latest) { showUnavailableReceipt(); return }
+  if (JSON.stringify(latest) === JSON.stringify(currentManifest)) return
+  const openIds = new Set([...liveReceipt.querySelectorAll<HTMLDetailsElement>("details[open][data-derivative-id]")].map((detail) => detail.dataset.derivativeId))
+  currentManifest = latest
+  renderReceipt(latest)
+  for (const detail of liveReceipt.querySelectorAll<HTMLDetailsElement>("details[data-derivative-id]")) {
+    if (openIds.has(detail.dataset.derivativeId)) detail.open = true
+  }
 }
 
 const setSelectedFile = (file: File): boolean => {
@@ -692,36 +776,32 @@ document.querySelector<HTMLButtonElement>("#quick-demo")!.addEventListener("clic
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault()
+  if (createButton.disabled) return
   const mode = currentMode()
   if (!validatePassportForm()) return
+
+  let snapshot: ReturnType<typeof capturePassportSubmission>
+  try {
+    snapshot = capturePassportSubmission(mode, selectedFile, getInput("#rights-check").checked, {
+      collection: selectedOrOther(collectionSelect, collectionOther),
+      title: getInput("#title").value.trim(), creator: getInput("#creator").value.trim(),
+      language: selectedOrOther(languageSelect, languageOther), place: getInput("#place").value.trim(),
+      recordedOn: getInput("#recorded-on").value || undefined, context: getTextArea("#context").value.trim(),
+      rightsBasis: selectedRightsBasis(), evidenceUrl: getInput("#evidence-url").value.trim() || undefined,
+    })
+  } catch (error) {
+    formMessage.textContent = error instanceof Error ? error.message : "The passport details could not be captured."
+    return
+  }
 
   createButton.disabled = true
   createButton.textContent = mode === "present" ? "Fingerprinting every byte…" : "Documenting recovery record…"
   formMessage.textContent = "Building the archival passport locally…"
 
   try {
-    const source = selectedFile && mode === "present"
-      ? {
-          filename: selectedFile.name,
-          mediaType: selectedFile.type || "application/octet-stream",
-          bytes: selectedFile.size,
-          sha256: await sha256(selectedFile),
-        }
-      : undefined
-
-    currentManifest = buildManifest({
-      status: source ? "fingerprinted" : "source-missing",
-      collection: selectedOrOther(collectionSelect, collectionOther),
-      title: getInput("#title").value.trim(),
-      creator: getInput("#creator").value.trim(),
-      language: selectedOrOther(languageSelect, languageOther),
-      place: getInput("#place").value.trim(),
-      recordedOn: getInput("#recorded-on").value || undefined,
-      context: getTextArea("#context").value.trim(),
-      rightsBasis: selectedRightsBasis(),
-      evidenceUrl: getInput("#evidence-url").value.trim() || undefined,
-      source,
-    })
+    const digest = snapshot.file ? await sha256(snapshot.file) : undefined
+    currentManifest = completePassportSubmission(snapshot, digest)
+    const source = currentManifest.source
     corpus = saveToCorpus(currentManifest)
     renderReceipt(currentManifest)
     renderCorpus()
@@ -751,10 +831,31 @@ derivativeFileInput.addEventListener("change", () => {
   derivativeFileLabel.textContent = derivativeFile ? `${derivativeFile.name} · ${formatBytes(derivativeFile.size)}` : "Choose the derived audio file"
 })
 
+derivativePassport.addEventListener("change", () => renderCorpus())
+derivativeForm.addEventListener("change", () => syncInterventionForm(derivativeForm))
+derivativeForm.addEventListener("input", (event) => {
+  const control = event.target as HTMLElement
+  control.removeAttribute("aria-invalid")
+})
+syncInterventionForm(derivativeForm)
+
+const showDerivativeError = (error: unknown): void => {
+  derivativeMessage.textContent = error instanceof Error ? error.message : "The derivative could not be registered."
+  if (error instanceof InterventionFormError) {
+    const control = derivativeForm.querySelector<HTMLElement>(`#${error.fieldId}`)
+    const disclosureDetails = control?.closest<HTMLDetailsElement>("details")
+    if (disclosureDetails) disclosureDetails.open = true
+    control?.setAttribute("aria-invalid", "true")
+    control?.focus()
+    control?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+}
+
 derivativeForm.addEventListener("submit", async (event) => {
   event.preventDefault()
-  if (!derivativeForm.reportValidity()) return
-  const master = corpus.find((item) => item.archiveId === derivativePassport.value)
+  if (derivativeButton.disabled) return
+  syncInterventionForm(derivativeForm)
+  const master = readCorpus().find((item) => item.archiveId === derivativePassport.value)
   if (!master?.source) {
     derivativeMessage.textContent = "Choose a fingerprinted source master."
     derivativePassport.focus()
@@ -765,32 +866,28 @@ derivativeForm.addEventListener("submit", async (event) => {
     derivativeFileInput.focus()
     return
   }
-
+  // Copy controls, the chosen file, and the selected master before hashing can yield.
+  let snapshot: ReturnType<typeof captureDerivativeSubmission>
+  try { snapshot = captureDerivativeSubmission(master, derivativeFile, readInterventionFields(derivativeForm)) }
+  catch (error) { showDerivativeError(error); return }
   derivativeButton.disabled = true
   derivativeButton.textContent = "Fingerprinting derivative…"
   derivativeMessage.textContent = "Linking the derivative to its preserved master locally…"
   try {
-    const updated = addDerivative(master, {
-      label: getInput("#derivative-label").value.trim(),
-      purpose: getInput("#derivative-purpose").value.trim(),
-      method: getTextArea("#derivative-method").value.trim(),
-      changeLog: getTextArea("#derivative-changes").value.trim(),
-      reviewerNote: getTextArea("#derivative-review").value.trim() || undefined,
-      source: {
-        filename: derivativeFile.name,
-        mediaType: derivativeFile.type || "application/octet-stream",
-        bytes: derivativeFile.size,
-        sha256: await sha256(derivativeFile),
-      },
-    })
+    const digest = await sha256(snapshot.file)
+    const latestMaster = readCorpus().find((item) => item.archiveId === snapshot.master.archiveId)
+    const updated = completeDerivativeSubmission(snapshot, latestMaster, digest)
     corpus = updateInCorpus(updated)
     currentManifest = updated
-    renderReceipt(updated)
+    renderReceipt(updated, updated.derivatives?.at(-1)?.derivativeId)
     renderCorpus()
     derivativeMessage.textContent = "Derivative registered. Export the updated passport JSON to preserve the intervention record."
     derivativeButton.textContent = "Derivative registered"
+    liveReceipt.classList.add("result-ready")
+    liveReceipt.focus({ preventScroll: true })
+    liveReceipt.scrollIntoView({ behavior: "smooth", block: "start" })
   } catch (error) {
-    derivativeMessage.textContent = error instanceof Error ? error.message : "The derivative could not be registered."
+    showDerivativeError(error)
     derivativeButton.textContent = "Register documented derivative"
   } finally {
     derivativeButton.disabled = false
@@ -861,14 +958,14 @@ verifyButton.addEventListener("click", async () => {
   verifyButton.textContent = "Comparing every byte…"
   try {
     const digest = await sha256(checkedFile)
-    const matches = digest === target.source!.sha256
+    const matches = sameSha256(digest, target.source!.sha256)
     verifyResult.hidden = false
     verifyResult.className = `verify-result ${matches ? "match" : "mismatch"}`
     verifyResult.innerHTML = matches
       ? `<strong>Exact match.</strong><p>This file is byte-for-byte identical to the source in the passport.</p><code>${escapeHtml(digest)}</code>`
       : `<strong>Not the same file.</strong><p>The bytes differ. This may be an edit, re-export, transcoding, or another recording.</p><code>Expected ${escapeHtml(target.source!.sha256)}<br />Found ${escapeHtml(digest)}</code>`
 
-    const localTarget = readCorpus().find((item) => item.archiveId === target.archiveId && item.source?.sha256 === target.source!.sha256)
+    const localTarget = readCorpus().find((item) => item.archiveId === target.archiveId && sameSha256(item.source?.sha256, target.source!.sha256))
     if (matches && localTarget) {
       localTarget.events.push({ type: "verified", at: new Date().toISOString(), note: `Matched ${checkedFile.name}` })
       corpus = updateInCorpus(localTarget)
@@ -945,7 +1042,7 @@ transferButton.addEventListener("click", async () => {
   transferButton.textContent = "Uploading unlisted sample…"
   try {
     const digest = await sha256(selectedFile)
-    if (digest !== currentManifest.source.sha256) throw new Error("The selected file no longer matches the active passport.")
+    if (!sameSha256(digest, currentManifest.source.sha256)) throw new Error("The selected file no longer matches the active passport.")
     const upload = await client.samples.upload({ displayName: currentManifest.title, file: selectedFile, visibility: "unlisted" })
     if (upload instanceof Error) throw upload
     const sample = await upload.ready
@@ -974,7 +1071,7 @@ transferButton.addEventListener("click", async () => {
 syncSourceMode()
 mountCorpusWarning()
 renderCorpus()
-window.addEventListener("storage", () => { corpus = readCorpus(); renderCorpus() })
+window.addEventListener("storage", () => { corpus = readCorpus(); renderCorpus(); refreshActiveReceipt() })
 const requestedPassport = new URLSearchParams(window.location.search).get("passport")
 const requestedManifest = corpus.find((item) => item.archiveId === requestedPassport)
 if (requestedManifest) { currentManifest = requestedManifest; renderReceipt(requestedManifest) }

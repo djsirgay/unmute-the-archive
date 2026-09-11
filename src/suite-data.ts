@@ -1,5 +1,6 @@
-import { readCorpus, writeCorpus } from "./corpus"
-import { isArchiveManifest, type ArchiveManifest } from "./manifest"
+import { csvCell, readCorpus, writeCorpus } from "./corpus"
+import { isArchiveManifest, type ArchiveDerivative, type ArchiveManifest } from "./manifest"
+import type { InterventionJournal } from "./intervention"
 
 export type Confidence = "high" | "medium" | "recovery"
 export type RecordKind = "song" | "album" | "dj-set" | "mix" | "recording" | "derivative"
@@ -27,6 +28,13 @@ export type AtlasRecord = {
   evidenceUrl?: string
   evidenceLabel?: string
   isDemo: boolean
+  /** A declared review status, never inferred from a file hash or legacy note. */
+  reviewStatus?: InterventionJournal["review"]["status"] | "unknown"
+  sourceMasterSha256?: string
+  masterRightsBasis?: string
+  /** Preserve the complete audit record in Atlas JSON reports, including legacy fields. */
+  derivative?: ArchiveDerivative
+  intervention?: InterventionJournal
 }
 
 export type AtlasAnnotation = {
@@ -493,7 +501,7 @@ const recordFromManifest = (manifest: ArchiveManifest): AtlasRecord => ({
   genres: [],
   themes: ["archival record"],
   dance: false,
-    confidence: manifest.status === "fingerprinted" ? "medium" : "recovery",
+  confidence: manifest.status === "fingerprinted" ? "medium" : "recovery",
   sourceStatus: manifest.status === "fingerprinted" ? "fingerprinted" : "recovery-lead",
   rightsStatus: manifest.rightsBasis,
   collection: manifest.collection,
@@ -503,35 +511,83 @@ const recordFromManifest = (manifest: ArchiveManifest): AtlasRecord => ({
   isDemo: false,
 })
 
-const derivativeRecords = (manifest: ArchiveManifest): AtlasRecord[] => (manifest.derivatives ?? []).map((derivative) => ({
-  id: derivative.derivativeId,
-  archiveId: manifest.archiveId,
-  title: `${manifest.title} — ${derivative.label}`,
-  creator: manifest.creator,
-  year: Number(derivative.createdAt.slice(0, 4)),
-  language: manifest.language,
-  place: manifest.place,
-  kind: "derivative",
-  format: derivative.source.mediaType,
-  relationship: `documented derivative of ${manifest.archiveId}`,
-  genres: [],
-  themes: ["restoration", derivative.purpose],
-  dance: false,
-  confidence: "high",
-  sourceStatus: "fingerprinted",
-  rightsStatus: manifest.rightsBasis,
-  collection: manifest.collection,
-  summary: `${derivative.method} ${derivative.changeLog}`.trim(),
-  evidenceUrl: manifest.evidenceUrl,
-  evidenceLabel: "Parent-passport evidence",
-  isDemo: false,
-}))
+const derivativeRightsStatus = (journal?: InterventionJournal): string => {
+  if (!journal) return "Derivative authority unknown: no structured intervention journal. The source master's rights basis is not a permission grant for this derivative."
+  const basis = journal.authority.basis === "unknown"
+    ? "Derivative authority unknown"
+    : journal.authority.basis === "no-permission"
+      ? "No permission declared for this derivative"
+      : `Declared derivative authority: ${journal.authority.basis}`
+  return `${basis}. Scope: ${journal.authority.scope}. This declaration is not independently verified and does not grant reuse rights.`
+}
+
+const derivativeRecords = (manifest: ArchiveManifest): AtlasRecord[] => (manifest.derivatives ?? []).map((derivative) => {
+  const journal = derivative.intervention
+  const reviewStatus = journal?.review.status ?? "unknown"
+  const reviewSummary = journal
+    ? `Declared human review: ${reviewStatus}. A review declaration does not establish authenticity or permission.`
+    : "Human review status unknown: this legacy record has no structured intervention journal. A historical reviewer note is not a review decision."
+  return {
+    id: derivative.derivativeId,
+    archiveId: manifest.archiveId,
+    title: `${manifest.title} — ${derivative.label}`,
+    creator: manifest.creator,
+    year: Number(derivative.createdAt.slice(0, 4)),
+    language: manifest.language,
+    place: manifest.place,
+    kind: "derivative",
+    format: derivative.source.mediaType,
+    relationship: `documented derivative of ${manifest.archiveId}`,
+    genres: [],
+    themes: ["restoration", derivative.purpose],
+    dance: false,
+    // A limited provenance category, not an assessment of audio quality or authenticity.
+    confidence: "medium",
+    sourceStatus: "fingerprinted",
+    rightsStatus: derivativeRightsStatus(journal),
+    collection: manifest.collection,
+    summary: `${derivative.method} ${derivative.changeLog} ${reviewSummary}`.trim(),
+    evidenceUrl: manifest.evidenceUrl,
+    evidenceLabel: "Parent-passport evidence",
+    isDemo: false,
+    reviewStatus,
+    sourceMasterSha256: manifest.source?.sha256,
+    masterRightsBasis: manifest.rightsBasis,
+    derivative: structuredClone(derivative),
+    intervention: journal ? structuredClone(journal) : undefined,
+  }
+})
 
 export const atlasRecords = (includeReviewer = true): AtlasRecord[] => {
   const annotations = readAnnotations()
   const local = readCorpus().flatMap((manifest) => [recordFromManifest(manifest), ...derivativeRecords(manifest)])
   const records = includeReviewer ? [...local, ...reviewerRecords] : local
-  return records.map((record) => ({ ...record, ...(annotations[record.id] ?? {}) }))
+  return records.map((record) => {
+    const annotated = { ...record, ...(annotations[record.id] ?? {}) }
+    // A free-form catalog annotation cannot promote a declarative journal to verified evidence.
+    if (record.derivative && annotated.confidence === "high") annotated.confidence = "medium"
+    return annotated
+  })
+}
+
+/** A search-result report, not a restorable passport backup. JSON retains full records. */
+export const atlasRecordsAsCsv = (records: AtlasRecord[]): string => {
+  const header = [
+    "id", "title", "creator", "year", "language", "kind", "relationship", "genres", "themes",
+    "dance", "confidence", "source_status", "evidence_url", "rights_status", "review_status",
+    "source_master_sha256", "derivative_sha256", "master_rights_basis", "method", "change_log",
+    "legacy_reviewer_note", "intervention_json", "derivative_json",
+  ]
+  const rows = records.map((item) => [
+    item.id, item.title, item.creator, item.year, item.language, item.kind, item.relationship,
+    item.genres.join("; "), item.themes.join("; "), item.dance, item.confidence, item.sourceStatus,
+    item.evidenceUrl, item.rightsStatus, item.reviewStatus, item.sourceMasterSha256,
+    item.derivative?.source.sha256, item.masterRightsBasis, item.derivative?.method,
+    item.derivative?.changeLog, item.derivative?.reviewerNote,
+    item.intervention ? JSON.stringify(item.intervention) : "",
+    item.derivative ? JSON.stringify(item.derivative) : "",
+  ])
+  return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
 }
 
 export const importPassportJson = (raw: string): number => {

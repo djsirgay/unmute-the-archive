@@ -85,7 +85,8 @@ export const corpusAsCsv = (corpus: ArchiveManifest[]): string => {
   const header = [
     "archive_id", "title", "creator", "language", "place", "recorded_on",
     "status", "collection", "context", "rights_basis", "source_filename", "sha256",
-    "evidence_url", "derivative_count", "citation",
+    "evidence_url", "derivative_count", "citation", "intervention_journal_count",
+    "derivatives_json", "events_json",
   ]
   const rows = corpus.map((item) => [
     item.archiveId,
@@ -103,6 +104,9 @@ export const corpusAsCsv = (corpus: ArchiveManifest[]): string => {
     item.evidenceUrl ?? "",
     item.derivatives?.length ?? 0,
     citationFor(item),
+    item.derivatives?.filter((derivative) => derivative.intervention !== undefined).length ?? 0,
+    JSON.stringify(item.derivatives ?? []),
+    JSON.stringify(item.events),
   ])
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n")
 }

@@ -1,6 +1,7 @@
 import "./suite.css"
 import {
   atlasRecords,
+  atlasRecordsAsCsv,
   downloadText,
   importPassportJson,
   matchesResearchQuery,
@@ -15,7 +16,7 @@ import {
   type RecordKind,
 } from "./suite-data"
 import { languageGroup, queryExplanation, isRemix, matchReason } from "./research-query"
-import { csvCell, exportCorpusJson, readCorpus } from "./corpus"
+import { exportCorpusJson, readCorpus } from "./corpus"
 import { mountCorpusWarning } from "./storage-warning"
 import { confidenceLabel, escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 import { mountDiscovery } from "./discovery-ui"
@@ -229,9 +230,7 @@ byId("backup-passports").addEventListener("click", () => exportCorpusJson(readCo
 const exportRows = (): Record<string, unknown>[] => visible.map((item) => ({ ...item, query: search.value, localAnnotation: readAnnotations()[item.id], exportScope: "visible Music Atlas result — report, not a passport backup", exportedAt: new Date().toISOString() }))
 byId("export-json").addEventListener("click", () => downloadText(JSON.stringify(exportRows(), null, 2), "application/json", "unmute-belarus-atlas-result.json"))
 byId("export-csv").addEventListener("click", () => {
-  const header = ["id", "title", "creator", "year", "language", "kind", "relationship", "genres", "themes", "dance", "confidence", "source_status", "evidence_url"]
-  const rows = visible.map((item) => [item.id, item.title, item.creator, item.year, item.language, item.kind, item.relationship, item.genres.join("; "), item.themes.join("; "), item.dance, item.confidence, item.sourceStatus, item.evidenceUrl])
-  downloadText([header, ...rows].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8", "unmute-belarus-atlas-result.csv")
+  downloadText(atlasRecordsAsCsv(visible), "text/csv;charset=utf-8", "unmute-belarus-atlas-result.csv")
 })
 
 fillOptions()

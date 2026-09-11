@@ -1,3 +1,5 @@
+import { isInterventionJournal, isSha256, sameSha256, type InterventionJournal } from "./intervention"
+
 export type ArchiveEvent = {
   type: "documented" | "fingerprinted" | "verified" | "transferred" | "derived"
   at: string
@@ -12,6 +14,8 @@ export type ArchiveDerivative = {
   method: string
   changeLog: string
   reviewerNote?: string
+  /** Absent for legacy records: no structured AI, rights, or review claim is inferred. */
+  intervention?: InterventionJournal
   source: {
     filename: string
     mediaType: string
@@ -21,7 +25,7 @@ export type ArchiveDerivative = {
 }
 
 export type ArchiveManifest = {
-  schema: "unmute-archive/2.0" | "unmute-archive/2.1"
+  schema: "unmute-archive/2.0" | "unmute-archive/2.1" | "unmute-archive/2.2"
   archiveId: string
   createdAt: string
   updatedAt: string
@@ -62,9 +66,6 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
 const hasString = (value: Record<string, unknown>, key: string): boolean =>
   typeof value[key] === "string" && Boolean(String(value[key]).trim())
 
-const isSha256 = (value: unknown): value is string =>
-  typeof value === "string" && /^[a-f0-9]{64}$/i.test(value)
-
 const isArchiveSource = (value: unknown): value is NonNullable<ArchiveManifest["source"]> => {
   if (!isPlainRecord(value)) return false
   return hasString(value, "filename") && hasString(value, "mediaType") &&
@@ -74,7 +75,7 @@ const isArchiveSource = (value: unknown): value is NonNullable<ArchiveManifest["
 
 const isArchiveEvent = (value: unknown): value is ArchiveEvent => {
   if (!isPlainRecord(value)) return false
-  return ["documented", "fingerprinted", "verified", "transferred", "derived"].includes(String(value.type)) &&
+  return typeof value.type === "string" && ["documented", "fingerprinted", "verified", "transferred", "derived"].includes(value.type) &&
     hasString(value, "at") && hasString(value, "note")
 }
 
@@ -83,7 +84,8 @@ const isArchiveDerivative = (value: unknown): value is ArchiveDerivative => {
   return hasString(value, "derivativeId") && hasString(value, "createdAt") &&
     hasString(value, "label") && hasString(value, "purpose") && hasString(value, "method") &&
     hasString(value, "changeLog") && isArchiveSource(value.source) &&
-    (value.reviewerNote === undefined || typeof value.reviewerNote === "string")
+    (value.reviewerNote === undefined || typeof value.reviewerNote === "string") &&
+    (value.intervention === undefined || isInterventionJournal(value.intervention))
 }
 
 /**
@@ -92,16 +94,28 @@ const isArchiveDerivative = (value: unknown): value is ArchiveDerivative => {
  */
 export const isArchiveManifest = (value: unknown): value is ArchiveManifest => {
   if (!isPlainRecord(value)) return false
-  if (!["unmute-archive/2.0", "unmute-archive/2.1"].includes(String(value.schema))) return false
-  if (!["fingerprinted", "source-missing"].includes(String(value.status))) return false
+  if (typeof value.schema !== "string" || !["unmute-archive/2.0", "unmute-archive/2.1", "unmute-archive/2.2"].includes(value.schema)) return false
+  if (typeof value.status !== "string" || !["fingerprinted", "source-missing"].includes(value.status)) return false
   const required = ["archiveId", "createdAt", "updatedAt", "collection", "title", "creator", "language", "place", "context", "rightsBasis"]
   if (!required.every((key) => hasString(value, key))) return false
   if (value.recordedOn !== undefined && typeof value.recordedOn !== "string") return false
   if (value.evidenceUrl !== undefined && (typeof value.evidenceUrl !== "string" || !isPublicEvidenceUrl(value.evidenceUrl))) return false
   if (!Array.isArray(value.events) || !value.events.every(isArchiveEvent)) return false
   if (value.derivatives !== undefined && (!Array.isArray(value.derivatives) || !value.derivatives.every(isArchiveDerivative))) return false
-  if (value.status === "fingerprinted") return isArchiveSource(value.source)
-  return value.source === undefined
+  const derivatives = value.derivatives as ArchiveDerivative[] | undefined
+  if (value.status === "source-missing") return value.source === undefined && !derivatives?.length
+  if (!isArchiveSource(value.source)) return false
+  const masterHash = value.source.sha256
+  const ids = new Set<string>()
+  const hashes = new Set<string>()
+  for (const derivative of derivatives ?? []) {
+    const hash = derivative.source.sha256.toLowerCase()
+    if (sameSha256(masterHash, hash) || ids.has(derivative.derivativeId) || hashes.has(hash)) return false
+    ids.add(derivative.derivativeId)
+    hashes.add(hash)
+    if (derivative.intervention && (value.schema !== "unmute-archive/2.2" || !sameSha256(derivative.intervention.sourceMasterSha256, masterHash))) return false
+  }
+  return true
 }
 
 type ManifestValues = Omit<
@@ -130,7 +144,7 @@ export const buildManifest = (values: ManifestValues): ArchiveManifest => {
   }
 
   return {
-    schema: "unmute-archive/2.1",
+    schema: values.derivatives?.some((item) => item.intervention) ? "unmute-archive/2.2" : "unmute-archive/2.1",
     archiveId: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -144,22 +158,31 @@ export const addDerivative = (
   values: Omit<ArchiveDerivative, "derivativeId" | "createdAt">,
 ): ArchiveManifest => {
   if (!manifest.source) throw new Error("A derivative must be linked to a fingerprinted source master.")
-  if (values.source.sha256 === manifest.source.sha256) {
+  if (!isArchiveManifest(manifest)) throw new Error("The source passport is incomplete or internally inconsistent.")
+  if (!isArchiveSource(values.source)) throw new Error("The derivative needs valid file metadata and a SHA-256 digest.")
+  if (sameSha256(values.source.sha256, manifest.source.sha256)) {
     throw new Error("This file is byte-for-byte identical to the master. Verify it instead of registering a derivative.")
   }
-  if (manifest.derivatives?.some((item) => item.source.sha256 === values.source.sha256)) {
+  if (manifest.derivatives?.some((item) => sameSha256(item.source.sha256, values.source.sha256))) {
     throw new Error("This exact derivative is already registered in the passport.")
+  }
+  if (values.intervention && !isInterventionJournal(values.intervention)) {
+    throw new Error("The intervention journal is incomplete or internally inconsistent.")
+  }
+  if (values.intervention && !sameSha256(values.intervention.sourceMasterSha256, manifest.source.sha256)) {
+    throw new Error("The intervention journal names a different source master.")
   }
   const timestamp = new Date().toISOString()
   const derivative: ArchiveDerivative = {
     derivativeId: crypto.randomUUID(),
     createdAt: timestamp,
-    ...values,
+    ...structuredClone(values),
   }
+  if (!isArchiveDerivative(derivative)) throw new Error("The derivative needs a label, purpose, method, and change log.")
 
   return {
     ...manifest,
-    schema: "unmute-archive/2.1",
+    schema: derivative.intervention ? "unmute-archive/2.2" : manifest.schema,
     updatedAt: timestamp,
     derivatives: [...(manifest.derivatives ?? []), derivative],
     events: [

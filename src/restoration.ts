@@ -3,16 +3,18 @@ import { analyzeAudio, audioBufferToWav, decodeFile, drawWaveform, processAudio,
 import { readCorpus, saveToCorpus, updateInCorpus } from "./corpus"
 import { makeDemoClip } from "./demo-audio"
 import { buildManifest, formatBytes, MAX_BROWSER_AUDIO_BYTES, sha256, type ArchiveManifest } from "./manifest"
-import { registerCompletedRun, settingsText, type CompletedRun } from "./restoration-run"
+import { sameSha256 } from "./intervention"
+import { effectiveSettings, registerCompletedRun, restorationLog, saveRegisteredRunNote, settingsText, withMasterAttestation, withPendingReviewNote, type CompletedRun } from "./restoration-run"
 import { mountCorpusWarning } from "./storage-warning"
 import { downloadText } from "./suite-data"
 import { escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
+import { version as applicationVersion } from "../package.json"
 
 const app = document.querySelector<HTMLDivElement>("#app")!
 app.innerHTML = `${suiteHeader("restoration")}
 <main class="suite-main">
   <section class="suite-hero shell restoration-hero">
-    <p class="suite-eyebrow">03 · Reversible preservation workflow</p>
+    <p class="suite-eyebrow">03 · Master-preserving listening workflow</p>
     <h1>Improve access.<br><em>Never erase the master.</em></h1>
     <p>Restoration Lab creates a separate, fingerprinted listening derivative and a machine-readable intervention log. The original remains untouched, and registration is allowed only when its bytes match a source master in Archive Passport.</p>
     <div class="suite-actions"><a class="suite-button primary" href="#lab">Open the lab</a><button class="suite-button" id="load-demo">Run a safe synthetic demo</button></div>
@@ -34,14 +36,13 @@ app.innerHTML = `${suiteHeader("restoration")}
       <label class="atlas-check"><input id="normalize" type="checkbox" checked><span>Peak-normalize derivative to 95%</span></label>
       <p class="atlas-note">Normalization sets the final peak, so gain does not control final loudness while it is enabled. Downloads are 16-bit PCM WAV access copies.</p>
       <label class="atlas-field">Intervention purpose<input id="purpose" value="Access copy for research listening"></label>
-      <label class="atlas-field">Reviewer note<textarea id="reviewer-note" rows="3" placeholder="What should a future listener know?"></textarea></label>
       <button class="suite-button primary process-button" id="process" disabled>Process documented derivative</button><output class="process-status" id="process-status" aria-live="polite"></output>
     </aside>
 
     <div class="lab-output">
-      <section class="wave-panel suite-panel"><header><div><span class="suite-kicker">A · Untouched source</span><h2 id="source-title">No source selected</h2></div><span class="suite-chip" id="source-badge">not verified</span></header><canvas id="source-wave" aria-label="Source waveform"></canvas><audio id="source-player" controls></audio><div class="metric-row" id="source-metrics"></div></section>
-      <section class="wave-panel suite-panel"><header><div><span class="suite-kicker">B · New derivative</span><h2 id="result-title">Process to create an access copy</h2></div><span class="suite-chip" id="result-badge">pending</span></header><canvas id="result-wave" aria-label="Processed waveform"></canvas><audio id="result-player" controls></audio><div class="metric-row" id="result-metrics"></div></section>
-      <section class="intervention-panel suite-panel" id="report-panel"><div><span class="suite-kicker">Intervention log</span><h2>Every change should be legible.</h2></div><div id="intervention-log" class="intervention-log"><p>No processing has been run. The pilot will record settings, source and derivative fingerprints, metrics, time, and the parent passport.</p></div><div class="suite-actions"><button class="suite-button" id="download-wav" disabled>Download WAV</button><button class="suite-button" id="download-log" disabled>Download JSON log</button><button class="suite-button primary" id="register" disabled>Register in passport</button></div><output id="register-status"></output></section>
+      <section class="wave-panel suite-panel"><header><div><span class="suite-kicker">A · Untouched source</span><h2 id="source-title">No source selected</h2></div><span class="suite-chip" id="source-badge">not verified</span></header><canvas id="source-wave" aria-label="Source waveform"></canvas><audio id="source-player" controls></audio><div class="metric-row" id="source-metrics"></div><p class="atlas-note">Metrics describe decoded audio. The browser may resample it; this is not a measurement of the original file’s encoded sample rate. Source file bytes remain untouched.</p></section>
+      <section class="wave-panel suite-panel"><header><div><span class="suite-kicker">B · New derivative</span><h2 id="result-title">Process to create an access copy</h2></div><span class="suite-chip" id="result-badge">pending</span></header><canvas id="result-wave" aria-label="Processed waveform"></canvas><audio id="result-player" controls></audio><div class="metric-row" id="result-metrics"></div><p class="atlas-note">Output peak and RMS are measured before 16-bit WAV quantization. These measurements do not establish perceptual quality or authenticity.</p></section>
+      <section class="intervention-panel suite-panel" id="report-panel"><div><span class="suite-kicker">Intervention log</span><h2>Every change should be legible.</h2></div><div id="intervention-log" class="intervention-log"><p>No processing has been run. The pilot will record settings, source and derivative fingerprints, metrics, time, and the parent passport.</p></div><label class="atlas-field">Listening note — review remains pending<textarea id="reviewer-note" rows="3" placeholder="After comparing A and B, note artifacts, uncertainty, or what still needs review." disabled></textarea></label><p class="atlas-note">You can update this note after listening without processing the audio again. A note alone is not a completed review, approval, or rights clearance.</p><label class="atlas-check"><input id="preserve-master" type="checkbox" disabled><span>I confirm the source master is preserved and this is a separate access copy.</span></label><p class="atlas-note">Confirm preservation to export the journal or register it. Processing authority is not assessed here; this record documents the workflow and does not grant permission for reuse.</p><div class="suite-actions"><button class="suite-button" id="download-wav" disabled>Download WAV</button><button class="suite-button" id="download-log" disabled>Download JSON log</button><button class="suite-button primary" id="register" disabled>Register in passport</button></div><output id="register-status" aria-live="polite"></output></section>
     </div>
   </section>
 
@@ -55,33 +56,39 @@ const processButton = byId<HTMLButtonElement>("process")
 const registerButton = byId<HTMLButtonElement>("register")
 const wavButton = byId<HTMLButtonElement>("download-wav")
 const logButton = byId<HTMLButtonElement>("download-log")
+const reviewerNoteInput = byId<HTMLTextAreaElement>("reviewer-note")
+const preserveMasterInput = byId<HTMLInputElement>("preserve-master")
 let sourceFile: File | undefined
 let sourceBuffer: AudioBuffer | undefined
 let sourceHash = ""
 let resultBuffer: AudioBuffer | undefined
 let resultBlob: Blob | undefined
-let resultHash = ""
 let sourceUrl = ""
 let resultUrl = ""
-let intervention: Record<string, unknown> | undefined
+let intervention: ReturnType<typeof restorationLog> | undefined
 let completedRun: CompletedRun | undefined
+let registered: { archiveId: string; derivativeId: string } | undefined
+let noteDirty = false
 let sourceVersion = 0
 let processing = false
 
 const manifests = (): ArchiveManifest[] => readCorpus().filter((item) => item.source)
 const selectedManifest = (): ArchiveManifest | undefined => manifests().find((item) => item.archiveId === passportSelect.value)
-const metricHtml = (metrics: AudioMetrics): string => [[`${metrics.duration.toFixed(2)}s`, "duration"], [`${(metrics.sampleRate / 1000).toFixed(1)}k`, "sample rate"], [metrics.channels, "channels"], [`${(metrics.peak * 100).toFixed(1)}%`, "peak"], [`${(metrics.rms * 100).toFixed(1)}%`, "RMS"]].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("")
+const metricHtml = (metrics: AudioMetrics): string => [[`${metrics.duration.toFixed(2)}s`, "duration"], [`${(metrics.sampleRate / 1000).toFixed(1)}k`, "processing rate"], [metrics.channels, "channels"], [`${(metrics.peak * 100).toFixed(1)}%`, "peak"], [`${(metrics.rms * 100).toFixed(1)}%`, "RMS"]].map(([value, label]) => `<div><strong>${value}</strong><span>${label}</span></div>`).join("")
 const shortHash = (value: string): string => value ? `${value.slice(0, 10)}…${value.slice(-10)}` : "—"
 const refreshPassports = (selectId?: string): void => {
   const items = manifests()
-  passportSelect.innerHTML = `<option value="">Choose a local passport</option>${items.map((item) => `<option value="${item.archiveId}">${escapeHtml(item.title)} · ${shortHash(item.source?.sha256 ?? "")}</option>`).join("")}`
+  passportSelect.innerHTML = `<option value="">Choose a local passport</option>${items.map((item) => `<option value="${escapeHtml(item.archiveId)}">${escapeHtml(item.title)} · ${shortHash(item.source?.sha256 ?? "")}</option>`).join("")}`
   if (selectId) passportSelect.value = selectId
 }
 const settings = (): ProcessSettings => ({ highpass: Number(byId<HTMLInputElement>("highpass").value), lowpass: Number(byId<HTMLInputElement>("lowpass").value), gainDb: Number(byId<HTMLInputElement>("gain").value), normalize: byId<HTMLInputElement>("normalize").checked })
 const revoke = (value: string): void => { if (value) URL.revokeObjectURL(value) }
 
 const resetResult = (): void => {
-  resultBuffer = undefined; resultBlob = undefined; resultHash = ""; intervention = undefined; completedRun = undefined
+  resultBuffer = undefined; resultBlob = undefined; intervention = undefined; completedRun = undefined
+  registered = undefined; noteDirty = false
+  reviewerNoteInput.value = ""; reviewerNoteInput.disabled = true
+  preserveMasterInput.checked = false; preserveMasterInput.disabled = true
   revoke(resultUrl); resultUrl = ""
   byId<HTMLAudioElement>("result-player").removeAttribute("src")
   byId<HTMLAudioElement>("result-player").load()
@@ -93,19 +100,32 @@ const resetResult = (): void => {
   byId("result-metrics").innerHTML = ""
   byId("intervention-log").innerHTML = `<p>No processing has been run. The pilot will record settings, source and derivative fingerprints, metrics, time, and the parent passport.</p>`
   registerButton.disabled = true; wavButton.disabled = true; logButton.disabled = true
+  registerButton.textContent = "Register in passport"
 }
 
 const assessLink = (): void => {
   const manifest = selectedManifest()
-  const exact = Boolean(sourceHash && manifest?.source?.sha256 === sourceHash)
+  const exact = sameSha256(sourceHash, manifest?.source?.sha256)
   processButton.disabled = !sourceBuffer || processing
-  registerButton.disabled = !resultBlob || !exact
+  const savedHere = registered?.archiveId === manifest?.archiveId
+  registerButton.disabled = !resultBlob || !exact || !completedRun?.intervention || (savedHere && !noteDirty)
+  registerButton.textContent = savedHere ? "Save note to passport" : "Register in passport"
+  logButton.disabled = !intervention
   byId("source-badge").textContent = exact ? "exact master match" : sourceHash ? "not linked" : "not verified"
   byId("source-badge").className = `suite-chip ${exact ? "high" : "recovery"}`
   byId("source-check").innerHTML = exact
     ? `<strong>✓ Exact source match</strong><span>SHA-256 agrees with “${escapeHtml(manifest?.title ?? "")}”. Registration will be permitted.</span>`
     : manifest && sourceHash ? `<strong>Fingerprint mismatch</strong><span>You may audition a derivative, but it cannot be registered under this passport. Choose the exact master or the correct passport.</span>`
       : `<span>Select a source file and its fingerprinted passport. Use the safe demo if you want to test the entire workflow.</span>`
+}
+
+const refreshJournal = (): void => {
+  if (!completedRun) return
+  const manifest = selectedManifest()
+  const parentId = sameSha256(manifest?.source?.sha256, completedRun.sourceHash) ? manifest!.archiveId : null
+  intervention = completedRun.intervention ? restorationLog(completedRun, parentId) : undefined
+  byId("intervention-log").innerHTML = `<dl><div><dt>Parent source SHA-256</dt><dd>${shortHash(completedRun.sourceHash)}</dd></div><div><dt>Derivative SHA-256</dt><dd>${shortHash(completedRun.source.sha256)}</dd></div><div><dt>Processing</dt><dd>Non-AI · Browser Web Audio API</dd></div><div><dt>Applied method</dt><dd>${escapeHtml(settingsText(completedRun.settings))}</dd></div><div><dt>Listening review</dt><dd>Pending — audible preservation and uncertainty have not been assessed.</dd></div><div><dt>Authority</dt><dd>Unknown — documentation only; no reuse permission is established.</dd></div></dl><p>${intervention ? "Master preservation confirmed. The same structured journal is included in the JSON log and the passport when saved." : "The source file has not been overwritten by this tool. Confirm that you have preserved it before exporting or registering the journal."}</p>`
+  assessLink()
 }
 
 const loadFile = async (file: File): Promise<void> => {
@@ -149,10 +169,10 @@ const loadFile = async (file: File): Promise<void> => {
 
 const ensureDemoPassport = async (file: File): Promise<ArchiveManifest> => {
   const digest = await sha256(file)
-  const existing = manifests().find((item) => item.source?.sha256 === digest)
+  const existing = manifests().find((item) => sameSha256(item.source?.sha256, digest))
   if (existing) return existing
   const manifest = buildManifest({
-    status: "fingerprinted", collection: "Unmute Belarus — safe reviewer demo", title: "Synthetic archive demo tone", creator: "Browser-generated demonstration", language: "No speech / synthetic tones", place: "Created locally in this browser", recordedOn: new Date().toISOString().slice(0, 10), context: "A rights-clear four-second tone sequence generated by the application solely to demonstrate source fingerprinting, reversible processing, derivative registration, and Atlas linkage.", rightsBasis: "Synthetic demonstration generated locally; no third-party recording used.", source: { filename: file.name, mediaType: file.type, bytes: file.size, sha256: digest }, derivatives: [],
+    status: "fingerprinted", collection: "Unmute Belarus — safe reviewer demo", title: "Synthetic archive demo tone", creator: "Browser-generated demonstration", language: "No speech / synthetic tones", place: "Created locally in this browser", recordedOn: new Date().toISOString().slice(0, 10), context: "A rights-clear four-second tone sequence generated by the application solely to demonstrate source fingerprinting, master-preserving processing, derivative registration, and Atlas linkage.", rightsBasis: "Synthetic demonstration generated locally; no third-party recording used.", source: { filename: file.name, mediaType: file.type, bytes: file.size, sha256: digest }, derivatives: [],
   })
   saveToCorpus(manifest)
   return manifest
@@ -175,9 +195,9 @@ const process = async (): Promise<void> => {
   const inputFile = sourceFile
   const inputBuffer = sourceBuffer
   const inputHash = sourceHash
-  const applied = { ...settings() }
+  const applied = effectiveSettings(settings(), inputBuffer.sampleRate)
   const purpose = byId<HTMLInputElement>("purpose").value.trim() || "Research access copy"
-  const reviewerNote = byId<HTMLTextAreaElement>("reviewer-note").value.trim()
+  const createdAt = new Date().toISOString()
   processing = true
   resetResult()
   processButton.disabled = true; processButton.textContent = "Processing locally…"
@@ -187,27 +207,19 @@ const process = async (): Promise<void> => {
     const blob = audioBufferToWav(processed)
     const digest = await sha256(blob)
     if (version !== sourceVersion) return
-    resultBuffer = processed; resultBlob = blob; resultHash = digest
-    completedRun = { sourceHash: inputHash, settings: applied, purpose, reviewerNote, label: `${inputFile.name.replace(/\.[^.]+$/, "")} — access derivative`, source: { filename: `${inputFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, mediaType: blob.type, bytes: blob.size, sha256: digest } }
+    resultBuffer = processed; resultBlob = blob
     revoke(resultUrl); resultUrl = URL.createObjectURL(resultBlob)
     byId<HTMLAudioElement>("result-player").src = resultUrl
     drawWaveform(byId<HTMLCanvasElement>("result-wave"), resultBuffer, "#ff9c7e")
     const sourceMetrics = analyzeAudio(inputBuffer)
     const resultMetrics = analyzeAudio(resultBuffer)
-    byId("result-title").textContent = `${sourceFile.name.replace(/\.[^.]+$/, "")} — access derivative`
+    completedRun = structuredClone({ sourceHash: inputHash, settings: applied, purpose, reviewerNote: "", label: `${inputFile.name.replace(/\.[^.]+$/, "")} — access derivative`, source: { filename: `${inputFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, mediaType: blob.type, bytes: blob.size, sha256: digest }, processing: { createdAt, applicationVersion, inputFile: { filename: inputFile.name, mediaType: inputFile.type || "application/octet-stream", bytes: inputFile.size, sha256: inputHash }, sourceMetrics, resultMetrics } })
+    byId("result-title").textContent = completedRun.label
     byId("result-badge").textContent = "new fingerprint"
     byId("result-badge").className = "suite-chip high"
     byId("result-metrics").innerHTML = metricHtml(resultMetrics)
-    intervention = {
-      schema: "unmute-restoration/1.0", createdAt: new Date().toISOString(), parentArchiveId: selectedManifest()?.source?.sha256 === inputHash ? selectedManifest()?.archiveId : null,
-      purpose, reviewerNote,
-      source: { filename: sourceFile.name, bytes: sourceFile.size, sha256: sourceHash, metrics: sourceMetrics },
-      derivative: { filename: `${sourceFile.name.replace(/\.[^.]+$/, "")}-access-derivative.wav`, bytes: resultBlob.size, mediaType: resultBlob.type, sha256: resultHash, metrics: resultMetrics },
-      processing: { engine: "Web Audio API / transparent browser signal chain", ...applied, summary: settingsText(applied) },
-      boundaries: ["Source bytes were not modified.", "No AI reconstruction or source separation was performed.", "The derivative is an access copy, not a replacement master."],
-    }
-    byId("intervention-log").innerHTML = `<dl><div><dt>Parent source</dt><dd>${shortHash(sourceHash)}</dd></div><div><dt>Derivative</dt><dd>${shortHash(resultHash)}</dd></div><div><dt>Method</dt><dd>${escapeHtml(settingsText(applied))}</dd></div><div><dt>Size</dt><dd>${formatBytes(resultBlob.size)}</dd></div></dl><p>The source remains untouched. The derivative can be downloaded now and registered only when the selected passport is an exact fingerprint match.</p>`
-    wavButton.disabled = false; logButton.disabled = false; assessLink()
+    reviewerNoteInput.disabled = false; preserveMasterInput.disabled = false
+    wavButton.disabled = false; refreshJournal()
     byId<HTMLOutputElement>("process-status").textContent = "Derivative created locally. Review the log before downloading or registering it."
     byId("report-panel").scrollIntoView({ behavior: "smooth", block: "center" })
   } catch (error) {
@@ -220,7 +232,19 @@ const process = async (): Promise<void> => {
 audioInput.addEventListener("change", async (event) => { const file = (event.currentTarget as HTMLInputElement).files?.[0]; if (file) await loadFile(file) })
 passportSelect.addEventListener("change", () => {
   assessLink()
-  if (intervention) intervention.parentArchiveId = selectedManifest()?.source?.sha256 === sourceHash ? selectedManifest()?.archiveId : null
+  refreshJournal()
+})
+preserveMasterInput.addEventListener("change", () => {
+  if (!completedRun) return
+  completedRun = withMasterAttestation(completedRun, preserveMasterInput.checked)
+  refreshJournal()
+})
+reviewerNoteInput.addEventListener("input", () => {
+  if (!completedRun) return
+  completedRun = withPendingReviewNote(completedRun, reviewerNoteInput.value)
+  noteDirty = Boolean(registered)
+  refreshJournal()
+  byId("register-status").textContent = registered ? "Pending note changed. Save it to the passport to update the saved copy; audio and processing settings are unchanged." : "Listening note updated in the current journal. Review remains pending; audio was not reprocessed."
 })
 byId("load-demo").addEventListener("click", runDemo)
 document.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((button) => button.addEventListener("click", () => {
@@ -245,9 +269,13 @@ registerButton.addEventListener("click", () => {
   const manifest = selectedManifest()
   if (!manifest || !resultBlob || !completedRun || !intervention) return
   try {
-    const updated = registerCompletedRun(manifest, completedRun)
-    updateInCorpus(updated); refreshPassports(updated.archiveId); registerButton.disabled = true
-    byId<HTMLOutputElement>("register-status").innerHTML = `Registered as a separate derivative. <a href="../#corpus">Open the parent passport</a> or <a href="../atlas/">see the new relationship in Music Atlas</a>.`
+    const updating = registered?.archiveId === manifest.archiveId
+    const updated = updating ? saveRegisteredRunNote(manifest, registered!.derivativeId, completedRun) : registerCompletedRun(manifest, completedRun)
+    updateInCorpus(updated)
+    const saved = updated.derivatives!.find((item) => sameSha256(item.source.sha256, completedRun!.source.sha256))!
+    registered = { archiveId: updated.archiveId, derivativeId: saved.derivativeId }; noteDirty = false
+    refreshPassports(updated.archiveId); refreshJournal()
+    byId<HTMLOutputElement>("register-status").innerHTML = `${updating ? "Pending note saved; audio and processing settings unchanged." : "Registered as a separate derivative with a pending review."} <a href="../#corpus">Open the parent passport</a> or <a href="../atlas/">see the relationship in Music Atlas</a>.`
   } catch (error) { byId<HTMLOutputElement>("register-status").textContent = error instanceof Error ? error.message : "Registration failed." }
 })
 
