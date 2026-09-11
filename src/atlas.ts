@@ -21,6 +21,7 @@ import { mountCorpusWarning } from "./storage-warning"
 import { confidenceLabel, escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 import { mountDiscovery } from "./discovery-ui"
 
+import { restoreInitialFragment } from "./initial-fragment"
 const app = document.querySelector<HTMLDivElement>("#app")!
 
 app.innerHTML = `${suiteHeader("atlas")}
@@ -239,3 +240,4 @@ mountDiscovery()
 search.value = new URLSearchParams(window.location.search).get("q") ?? ""
 renderSourceRegister()
 render()
+restoreInitialFragment()

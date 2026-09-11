@@ -10,6 +10,7 @@ import { downloadText } from "./suite-data"
 import { escapeHtml, suiteFooter, suiteHeader } from "./suite-shell"
 import { version as applicationVersion } from "../package.json"
 
+import { restoreInitialFragment } from "./initial-fragment"
 const app = document.querySelector<HTMLDivElement>("#app")!
 app.innerHTML = `${suiteHeader("restoration")}
 <main class="suite-main">
@@ -282,3 +283,4 @@ registerButton.addEventListener("click", () => {
 refreshPassports(new URLSearchParams(window.location.search).get("passport") ?? undefined)
 mountCorpusWarning()
 assessLink()
+restoreInitialFragment()

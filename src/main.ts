@@ -27,6 +27,7 @@ import { captureDerivativeSubmission, completeDerivativeSubmission, Intervention
 import { sameSha256 } from "./intervention"
 import { capturePassportSubmission, completePassportSubmission } from "./passport-submission"
 import "./style.css"
+import { restoreInitialFragment } from "./initial-fragment"
 
 const clientId = import.meta.env.VITE_AUDIOTOOL_CLIENT_ID?.trim() ?? ""
 const redirectUrl = import.meta.env.DEV
@@ -1076,3 +1077,4 @@ const requestedPassport = new URLSearchParams(window.location.search).get("passp
 const requestedManifest = corpus.find((item) => item.archiveId === requestedPassport)
 if (requestedManifest) { currentManifest = requestedManifest; renderReceipt(requestedManifest) }
 void initAudiotool()
+restoreInitialFragment()
