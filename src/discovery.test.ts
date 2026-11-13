@@ -42,6 +42,15 @@ describe("Broad metadata discovery", () => {
     expect(matchesDiscovery(record, parseDiscoveryIntent("N.R.M."))).toBe(true)
     expect(matchesDiscovery(record, parseDiscoveryIntent("Н.Р.М."))).toBe(true)
   })
+  it.each(["Песняры", "Песняры!", "Песняры 1978", "песні Песняры", "Песни Песняры", "songs by Песняры"]) ("keeps the artist name intact: %s", (text) => {
+    const query = parseDiscoveryIntent(text)
+    expect(query.text).toBe("песняры")
+    expect(query.format).toBe(/^(песні|Песни|songs) /.test(text) ? "song" : "")
+    expect(matchesDiscovery(record, query)).toBe(false)
+  })
+  it.each(["песни на белорусском", "песні на беларускай", "songs in Belarusian"]) ("still treats an actual song noun as a format: %s", (text) => {
+    expect(parseDiscoveryIntent(text)).toMatchObject({ text: "", format: "song", language: "Belarusian" })
+  })
   it.each(["albums in Belarusian", "альбомы на белорусском языке", "альбомы на беларускай мове"])("distinguishes language from country: %s", (text) => {
     const intent = parseDiscoveryIntent(text)
     expect(intent).toMatchObject({ format: "album", language: "Belarusian", text: "" })

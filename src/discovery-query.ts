@@ -12,7 +12,9 @@ const concepts: [string, RegExp][] = [
   ["ambient", /\bambient\b|эмбиент|эмбіент/iu], ["reggae", /\breggae\b|регги|рэгі/iu],
 ]
 const moods: [string, RegExp][] = [["calm", /calm|relax|спокой|спакой|медита|медыта/iu], ["sad", /\bsad\b|melanchol|груст|сумн|меланхол/iu], ["energetic", /energetic|energy|энерг|энэргі|бадзёр/iu], ["joyful", /joyful|happy|весел|вясёл|радост|радас/iu], ["dark", /\bdark\b|мрач|змроч/iu]]
-const noise = /^(find|show|me|all|some|the|a|an|music|musical|songs?|tracks?|works?|by|from|in|of|for|and|or|to|between|language|belarusian|belarus|найди|найти|покажи|мне|все|всю|вся|весь|хочу|слушать|послушать|музык\p{L}*|музыч\p{L}*|пес\p{L}*|трек\p{L}*|трэк\p{L}*|белорус\p{L}*|беларус\p{L}*|знайдзі|знайсці|пакажы|усе|ўсе|мне|працы|работы|на|по|па|с|з|і|и|или|або|для|из|ў|в|у|да|до|гад\p{L}*|год\p{L}*|мов\p{L}*|язык\p{L}*|х)$/u
+const noise = /^(find|show|me|all|some|the|a|an|music|musical|tracks?|works?|by|from|in|of|for|and|or|to|between|language|belarusian|belarus|найди|найти|покажи|мне|все|всю|вся|весь|хочу|слушать|послушать|музык\p{L}*|музыч\p{L}*|трек\p{L}*|трэк\p{L}*|белорус\p{L}*|беларус\p{L}*|знайдзі|знайсці|пакажы|усе|ўсе|мне|працы|работы|на|по|па|с|з|і|и|или|або|для|из|ў|в|у|да|до|гад\p{L}*|год\p{L}*|мов\p{L}*|язык\p{L}*|х)$/u
+// Whole words only: a name such as «Песняры» is not the noun «песня».
+const songWord = /^(songs?|singles?|песня|песни|песню|песней|песне|песен|песням|песнями|песнях|песні|песняй|песень|песнямі|с[іи]нгл(?:ы|а|ов|ау)?)$/u
 
 /** Transparent finite vocabulary, not an LLM. Unrecognized words remain visible text criteria. */
 export function parseDiscoveryIntent(description: string): DiscoveryIntent {
@@ -40,8 +42,9 @@ export function parseDiscoveryIntent(description: string): DiscoveryIntent {
   }
   if (/album|альбом/iu.test(remaining)) { intent.format = "album"; remaining = remaining.replace(/album\p{L}*|альбом\p{L}*/giu, " ") }
   else if (/artist|band|артист|исполнител|выканаў|гурт|групп/iu.test(remaining)) { intent.format = "artist"; remaining = remaining.replace(/artist\p{L}*|band\p{L}*|артист\p{L}*|исполнител\p{L}*|выканаў\p{L}*|гурт\p{L}*|групп\p{L}*/giu, " ") }
-  else if (/\bsong|\bsingle|песн|сінгл|сингл/iu.test(remaining)) intent.format = "song"
-  intent.text = normalizeDiscovery(remaining).split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 1 && !noise.test(token)).join(" ")
+  const words = normalizeDiscovery(remaining).split(/[^\p{L}\p{N}]+/u)
+  if (!intent.format && words.some((word) => songWord.test(word))) intent.format = "song"
+  intent.text = words.filter((word) => word.length > 1 && !noise.test(word) && !songWord.test(word)).join(" ")
   return intent
 }
 

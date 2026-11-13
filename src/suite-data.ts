@@ -27,6 +27,8 @@ export type AtlasRecord = {
   summary: string
   evidenceUrl?: string
   evidenceLabel?: string
+  /** Explicit, reviewed link for this recording; never inferred from evidenceUrl. */
+  listeningUrl?: string
   isDemo: boolean
   /** A declared review status, never inferred from a file hash or legacy note. */
   reviewStatus?: InterventionJournal["review"]["status"] | "unknown"
@@ -70,6 +72,7 @@ const creatorRecords: AtlasRecord[] = [
     summary: "A creator-owned Belarusian-language work that received documented Russian television exposure in 2016. The public video and press record are available; the original master remains a recovery target.",
     evidenceUrl: "https://youtu.be/6jQ43vYcTwE",
     evidenceLabel: "Public video evidence",
+    listeningUrl: "https://youtu.be/6jQ43vYcTwE",
     isDemo: true,
   },
   {
@@ -92,6 +95,7 @@ const creatorRecords: AtlasRecord[] = [
     summary: "A co-authored track circulated as part of the cultural soundtrack surrounding Belarus’s peaceful democratic protests. This record separates the public evidence from any still-unrecovered production master.",
     evidenceUrl: "https://youtu.be/g9d6szYbquo",
     evidenceLabel: "Public music-video evidence",
+    listeningUrl: "https://youtu.be/g9d6szYbquo",
     isDemo: true,
   },
   {
